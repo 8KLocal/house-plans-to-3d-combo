@@ -1,0 +1,15 @@
+[submodule "third_party/FloorplanToBlender3d"]
+	path = third_party/FloorplanToBlender3d
+	url = https://github.com/grebtsew/FloorplanToBlender3d.git
+[submodule "third_party/floorplan-to-3d"]
+	path = third_party/floorplan-to-3d
+	url = https://github.com/Yytsi/floorplan-to-3d.git
+[submodule "third_party/CubiCasa5k"]
+	path = third_party/CubiCasa5k
+	url = https://github.com/CubiCasa/CubiCasa5k.git
+[submodule "third_party/Floorplan-Dimractor"]
+	path = third_party/Floorplan-Dimractor
+	url = https://github.com/jasoncobra3/Floorplan-Dimractor.git
+[submodule "third_party/pymeshfix"]
+	path = third_party/pymeshfix
+	url = https://github.com/pyvista/pymeshfix.git

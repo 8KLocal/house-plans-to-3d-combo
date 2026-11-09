@@ -1,0 +1,33 @@
+# Combined, tested set (Python 3.11, CPU-only torch). Exact versions that passed
+# the smoke tests on 2026-11-09 are in requirements.lock.txt.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+torchvision>=0.17
+segmentation-models-pytorch>=0.3.3   # floorplan-to-3d
+opencv-python-headless>=4.10         # all (headless: no Qt/GTK)
+numpy>=1.26
+scipy
+pillow
+matplotlib
+pyfiglet                             # FloorplanToBlender3d
+shapely>=2                           # CubiCasa5k + 3D build
+scikit-image                         # CubiCasa5k
+svgpathtools                         # CubiCasa5k
+lmdb                                 # CubiCasa5k loaders
+pandas                               # CubiCasa5k
+cairosvg>=2.7                        # floorplan-to-3d (needs system libcairo2)
+safetensors>=0.4
+pyyaml
+tqdm
+pymupdf                              # Floorplan-Dimractor + PDF raster (AGPL-3.0!)
+pdfplumber
+regex
+json5
+pymeshfix>=0.18                      # mesh repair (GPL-3.0)
+trimesh>=4
+mapbox-earcut                        # trimesh polygon triangulation
+manifold3d
+lxml                                 # trimesh 3MF export
+networkx
+pytest
+gdown                                # CubiCasa weights from Google Drive
