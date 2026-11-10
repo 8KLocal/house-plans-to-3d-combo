@@ -76,6 +76,10 @@ def ordered(parts: dict) -> list[str]:
 
 # ---------------------------------------------------------------- exports
 
+def _uses_face_colors(mesh) -> bool:
+    return bool(isinstance(getattr(mesh, "metadata", None), dict) and mesh.metadata.get("hp3d_use_face_colors"))
+
+
 def export_glb(parts: dict, path: Path, pal: dict | None = None) -> None:
     """One named mesh per part, each with a PBR base colour (shown by any glTF viewer)."""
     import trimesh
@@ -83,6 +87,9 @@ def export_glb(parts: dict, path: Path, pal: dict | None = None) -> None:
     scene = trimesh.Scene()
     for k in ordered(parts):
         m = parts[k].copy()
+        if _uses_face_colors(m):
+            scene.add_geometry(m, node_name=k, geom_name=k)
+            continue
         c = color_of(k, pal)
         m.visual = trimesh.visual.TextureVisuals(material=PBRMaterial(
             name=k, baseColorFactor=[v / 255 for v in c], metallicFactor=0.0, roughnessFactor=0.9))
@@ -97,6 +104,24 @@ def export_3mf(parts: dict, path: Path, pal: dict | None = None, name: str = "ho
     keys = [k for k in ordered(parts) if len(parts[k].faces)]
     if not keys:
         raise ValueError("no parts to export")
+    # Extra base materials so one Furniture object can carry a different colour per piece.
+    extra: list[tuple[int, int, int, int]] = []
+    extra_of: dict[tuple[int, int, int], int] = {}
+    face_cols: dict[str, np.ndarray | None] = {}
+    for k in keys:
+        m = parts[k]
+        if not _uses_face_colors(m):
+            face_cols[k] = None
+            continue
+        fc = np.asarray(m.visual.face_colors)
+        face_cols[k] = fc
+        base = tuple(color_of(k, pal)[:3])
+        for col in fc[:, :3]:
+            key = (int(col[0]), int(col[1]), int(col[2]))
+            if key == base or key in extra_of:
+                continue
+            extra_of[key] = len(keys) + len(extra)
+            extra.append((*key, 255))
     x = ['<?xml version="1.0" encoding="UTF-8"?>',
          '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
          f'<metadata name="Title">{name}</metadata>', '<metadata name="Application">hp3d (8K by AK)</metadata>',
@@ -104,6 +129,8 @@ def export_3mf(parts: dict, path: Path, pal: dict | None = None, name: str = "ho
     for k in keys:
         x.append(f'<base name="{PART_LABELS.get(k, k)}" displaycolor="{hex_of(color_of(k, pal)).upper()}'
                  f'{color_of(k, pal)[3]:02X}"/>')
+    for col in extra:
+        x.append(f'<base name="Furniture" displaycolor="{hex_of(col).upper()}{col[3]:02X}"/>')
     x.append('</basematerials>')
     for i, k in enumerate(keys):
         m = parts[k]
@@ -112,7 +139,22 @@ def export_3mf(parts: dict, path: Path, pal: dict | None = None, name: str = "ho
         v = np.asarray(m.vertices, float)
         x.extend(f'<vertex x="{a:.6g}" y="{b:.6g}" z="{c:.6g}"/>' for a, b, c in v)
         x.append('</vertices><triangles>')
-        x.extend(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in np.asarray(m.faces, int))
+        fc = face_cols.get(k)
+        faces = np.asarray(m.faces, int)
+        if fc is not None and len(fc) == len(faces):
+            base = tuple(int(c) for c in color_of(k, pal)[:3])
+            lines = []
+            for face, col in zip(faces, fc[:, :3]):
+                key = (int(col[0]), int(col[1]), int(col[2]))
+                pi = extra_of.get(key)
+                a, b, c = (int(v) for v in face)
+                if pi is None or key == base:
+                    lines.append(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>')
+                else:
+                    lines.append(f'<triangle v1="{a}" v2="{b}" v3="{c}" pid="1" p1="{pi}"/>')
+            x.extend(lines)
+        else:
+            x.extend(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in faces)
         x.append('</triangles></mesh></object>')
     gid = len(keys) + 2
     x.append(f'<object id="{gid}" type="model" name="{name}"><components>')
