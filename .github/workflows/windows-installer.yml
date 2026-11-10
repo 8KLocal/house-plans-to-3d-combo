@@ -36,6 +36,7 @@ jobs:
 
       - name: Build installer
         id: build
+        timeout-minutes: 45
         shell: pwsh
         run: ./packaging/windows/build-installer.ps1
 
@@ -60,5 +61,6 @@ jobs:
 
       - name: Silent install and smoke test
         if: always() && steps.build.conclusion == 'success'
+        timeout-minutes: 25
         shell: pwsh
         run: ./packaging/windows/smoke-install.ps1 -Installer "${{ steps.build.outputs.installer }}"

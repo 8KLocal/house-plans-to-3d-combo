@@ -15,10 +15,11 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
 OutputBaseFilename=House-Plan-3D-Setup
-Compression=lzma2/ultra64
-SolidCompression=yes
+; normal, not ultra64: ultra64 on a multi-GB payload sits for over an hour with no output.
+Compression=lzma2/normal
+SolidCompression=no
 LZMAUseSeparateProcess=yes
-LZMANumBlockThreads=2
+LZMANumBlockThreads=4
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

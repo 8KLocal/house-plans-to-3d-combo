@@ -20,7 +20,33 @@ if (-not (Test-Path (Join-Path $Repo "requirements.lock.txt"))) {
   throw "could not find the repo root from $PSScriptRoot"
 }
 
-function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+function Say($m) { Write-Host ("[{0:HH:mm:ss}] ==> {1}" -f (Get-Date), $m) -ForegroundColor Cyan }
+
+function Invoke-Timed {
+  param(
+    [Parameter(Mandatory = $true)][string]$File,
+    [string[]]$ArgumentList = @(),
+    [Parameter(Mandatory = $true)][string]$What,
+    [Parameter(Mandatory = $true)][int]$Seconds,
+    [int[]]$OkExit = @(0),
+    [string]$WorkingDirectory = "",
+    [switch]$Soft
+  )
+  Say "$What (limit ${Seconds}s)"
+  $sp = @{ FilePath = $File; ArgumentList = $ArgumentList; PassThru = $true; NoNewWindow = $true }
+  if ($WorkingDirectory) { $sp.WorkingDirectory = $WorkingDirectory }
+  $p = Start-Process @sp
+  if (-not $p.WaitForExit($Seconds * 1000)) {
+    try { & taskkill.exe /F /T /PID $p.Id | Out-Null } catch {}
+    if ($Soft) { Say "WARNING: $What timed out; continuing"; return 124 }
+    throw "$What timed out after $Seconds seconds"
+  }
+  if ($p.ExitCode -notin $OkExit) {
+    if ($Soft) { Say "WARNING: $What exit $($p.ExitCode); continuing"; return $p.ExitCode }
+    throw "$What failed (exit $($p.ExitCode))"
+  }
+  return 0
+}
 
 function Invoke-Native {
   param([Parameter(Mandatory = $true)][scriptblock]$Command, [Parameter(Mandatory = $true)][string]$What)
@@ -69,7 +95,7 @@ function Get-File {
   }
   if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Force }
   Say "download $Url"
-  & curl.exe -L --fail --retry 5 --retry-all-errors --retry-delay 5 -A "house-plan-3d-setup" -o $Dest $Url
+  & curl.exe -L --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 -A "house-plan-3d-setup" -o $Dest $Url
   if ($LASTEXITCODE -ne 0) { throw "download failed: $Url" }
   $n = (Get-Item -LiteralPath $Dest).Length
   if ($n -lt $MinBytes) { throw "download too small ($n bytes): $Dest" }
@@ -114,28 +140,27 @@ foreach ($rel in @(
 $pySetup = Join-Path $Work "python-3.11.9-amd64.exe"
 Get-File "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe" $pySetup 20MB
 if (-not (Test-Path $PyExe)) {
-  Say "installing CPython 3.11.9 into $PyDir"
-  $p = Start-Process -FilePath $pySetup -Wait -PassThru -ArgumentList @(
+  Invoke-Timed -File $pySetup -Seconds 600 -OkExit @(0, 3010) -What "install CPython 3.11.9" -ArgumentList @(
     "/quiet", "InstallAllUsers=0", "Include_launcher=0", "Include_test=0",
     "Include_doc=0", "Include_dev=0", "Include_debug=0", "Include_symbols=0",
     "Include_pip=1", "Include_tcltk=1", "Shortcuts=0", "AssociateFiles=0",
     "PrependPath=0", "CompileAll=0", "TargetDir=$PyDir"
   )
-  if ($p.ExitCode -notin 0, 3010) { throw "Python installer exit $($p.ExitCode)" }
 }
-$ver = (& $PyExe -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
-if ($ver -ne "3.11") { throw "expected Python 3.11, got $ver" }
-Invoke-Native { & $PyExe -c "import tkinter; print('tkinter', tkinter.TkVersion)" } "tkinter import"
+Invoke-Timed -File $PyExe -Seconds 60 -What "check Python 3.11" -ArgumentList @("-c", "import sys; raise SystemExit(0 if sys.version_info[:2]==(3,11) else 1)")
+Invoke-Timed -File $PyExe -Seconds 60 -What "check tkinter" -ArgumentList @("-c", "import tkinter; print('tkinter', tkinter.TkVersion)")
 Say "using $PyExe"
 
 # ---- packages: same lock and CPU index as setup-windows.ps1 ----
-Say "installing requirements.lock.txt (CPU torch)"
-Invoke-Native { & $PyExe -m pip install --upgrade pip } "pip upgrade"
-Invoke-Native {
-  & $PyExe -m pip install -r (Join-Path $Repo "requirements.lock.txt") --extra-index-url https://download.pytorch.org/whl/cpu
-} "pip install requirements.lock.txt"
+Invoke-Timed -File $PyExe -Seconds 300 -What "pip upgrade" -ArgumentList @("-m", "pip", "install", "--upgrade", "pip")
+Invoke-Timed -File $PyExe -Seconds 1200 -What "pip install requirements.lock.txt" -ArgumentList @(
+  "-m", "pip", "install", "-r", (Join-Path $Repo "requirements.lock.txt"),
+  "--extra-index-url", "https://download.pytorch.org/whl/cpu"
+)
 # Non-editable: an editable install would point at this build machine.
-Invoke-Native { & $PyExe -m pip install (Join-Path $Repo "third_party\floorplan-to-3d") --no-deps } "pip install buildingcv"
+Invoke-Timed -File $PyExe -Seconds 300 -What "pip install buildingcv" -ArgumentList @(
+  "-m", "pip", "install", (Join-Path $Repo "third_party\floorplan-to-3d"), "--no-deps"
+)
 
 # site-packages\..\..\.. is the folder that contains both python\ and hp3d\
 $pth = Join-Path $PyDir "Lib\site-packages\hp3d-app.pth"
@@ -149,7 +174,7 @@ $env:MAMBA_ROOT_PREFIX = Join-Path $Work "mamba-root"
 $env:CONDA_PKGS_DIRS = Join-Path $Work "conda-pkgs"
 $cairo = Join-Path $Payload "vendor\cairo"
 New-Item -ItemType Directory -Force -Path (Split-Path $cairo) | Out-Null
-Invoke-Native { & $mm create -y -p $cairo -c conda-forge cairo } "micromamba create cairo"
+Invoke-Timed -File $mm -Seconds 600 -What "micromamba create cairo" -ArgumentList @("create", "-y", "-p", $cairo, "-c", "conda-forge", "cairo")
 $binList = @()
 foreach ($dllName in @("cairo.dll", "libcairo-2.dll")) {
   $binList += Get-ChildItem -Path $cairo -Recurse -Filter $dllName -File -ErrorAction SilentlyContinue |
@@ -179,12 +204,11 @@ $pkl = Join-Path $cc "model_best_val_loss_var.pkl"
 $gotPkl = $false
 for ($i = 1; $i -le 4; $i++) {
   if (Test-Path $pkl) { Remove-Item $pkl -Force }
-  Say "CubiCasa weights attempt $i"
-  & $PyExe -m gdown 1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK -O $pkl
-  if ($LASTEXITCODE -eq 0 -and (Test-Path $pkl) -and ((Get-Item $pkl).Length -gt 50MB)) { $gotPkl = $true; break }
+  $code = Invoke-Timed -File $PyExe -Seconds 300 -Soft -What "CubiCasa weights attempt $i" -ArgumentList @("-m", "gdown", "1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK", "-O", $pkl)
+  if ($code -eq 0 -and (Test-Path $pkl) -and ((Get-Item $pkl).Length -gt 50MB)) { $gotPkl = $true; break }
   if (Test-Path $pkl) { Remove-Item $pkl -Force }
-  & $PyExe -m gdown --fuzzy "https://drive.google.com/uc?id=1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK" -O $pkl
-  if ($LASTEXITCODE -eq 0 -and (Test-Path $pkl) -and ((Get-Item $pkl).Length -gt 50MB)) { $gotPkl = $true; break }
+  $code = Invoke-Timed -File $PyExe -Seconds 300 -Soft -What "CubiCasa weights fuzzy attempt $i" -ArgumentList @("-m", "gdown", "--fuzzy", "https://drive.google.com/uc?id=1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK", "-O", $pkl)
+  if ($code -eq 0 -and (Test-Path $pkl) -and ((Get-Item $pkl).Length -gt 50MB)) { $gotPkl = $true; break }
   Start-Sleep -Seconds (15 * $i)
 }
 if (-not $gotPkl) { throw "CubiCasa weights download failed (model_best_val_loss_var.pkl)" }
@@ -211,10 +235,10 @@ foreach ($must in @(
 if (Test-Path (Join-Path $Payload "third_party\CubiCasa5k\.git")) { throw "payload contains a third_party .git directory" }
 if (-not (Test-Path (Join-Path $Payload "weights\floorplan-to-3d\best.safetensors"))) { throw "weights were not staged in the payload" }
 
-Say "preflight import from the payload (cwd is not the app folder)"
-Push-Location $env:TEMP
-try {
-  & $PyExe -c @"
+# A Cairo or torch import can sit forever on a missing DLL. Cap it and still compile:
+# the release is published before the real smoke test.
+$pre = Join-Path $Work "preflight.py"
+@"
 import pathlib
 import hp3d, tkinter, torch, trimesh, fitz, cv2, buildingcv, cairosvg
 cairosvg.svg2png(bytestring=b'<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>')
@@ -223,11 +247,8 @@ here = pathlib.Path(hp3d.__file__).resolve()
 if root not in here.parents:
     raise SystemExit('hp3d loaded from %s, expected under %s' % (here, root))
 print('preflight ok', here)
-"@
-  if ($LASTEXITCODE -ne 0) { throw "preflight import failed" }
-} finally {
-  Pop-Location
-}
+"@ | Set-Content -Path $pre -Encoding ascii
+Invoke-Timed -File $PyExe -Seconds 180 -Soft -WorkingDirectory $env:TEMP -What "preflight import" -ArgumentList @($pre) | Out-Null
 
 Say "removing __pycache__ from the payload"
 Get-ChildItem -Path $Payload -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
@@ -244,23 +265,15 @@ $iscc = Join-Path $innoDir "ISCC.exe"
 if (-not (Test-Path $iscc)) {
   $innoSetup = Join-Path $Work "innosetup-7.1.1-x64.exe"
   Get-File "https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe" $innoSetup 5MB
-  Say "installing Inno Setup"
-  $p = Start-Process -FilePath $innoSetup -Wait -PassThru -ArgumentList @("/VERYSILENT", "/NORESTART", "/DIR=$innoDir")
-  if ($p.ExitCode -notin 0, 3010) { throw "Inno Setup installer exit $($p.ExitCode)" }
+  Invoke-Timed -File $innoSetup -Seconds 300 -OkExit @(0, 3010) -What "install Inno Setup" -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$innoDir")
 }
-if (-not (Test-Path $iscc)) {
-  $found = Get-ChildItem -Path "C:\Program Files", "C:\Program Files (x86)", $Work -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-  if (-not $found) { throw "ISCC.exe not found" }
-  $iscc = $found.FullName
-}
-Say "compiling installer with $iscc"
+if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
 $defs = Join-Path $PSScriptRoot "build-defines.iss"
 @(
   "#define Payload `"$($Payload.Replace('\', '\\'))`""
   "#define OutputDir `"$($Dist.Replace('\', '\\'))`""
 ) | Set-Content -Path $defs -Encoding ascii
-Invoke-Native { & $iscc (Join-Path $PSScriptRoot "house-plan-3d.iss") } "ISCC"
+Invoke-Timed -File $iscc -Seconds 1200 -What "compile installer" -ArgumentList @((Join-Path $PSScriptRoot "house-plan-3d.iss"))
 $exe = Join-Path $Dist "House-Plan-3D-Setup.exe"
 if (-not (Test-Path $exe)) { throw "installer was not written to $exe" }
 $n = (Get-Item $exe).Length
