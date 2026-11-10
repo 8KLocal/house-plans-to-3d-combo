@@ -166,7 +166,7 @@ class App(tk.Tk):
         self.v_wall_ft = tk.StringVar(value="8")
         self.v_measure = tk.StringVar()
         self.v_skipcc = tk.BooleanVar(value=False)
-        self.v_fixtures = tk.BooleanVar(value=False)
+        self.v_fixtures = tk.BooleanVar(value=True)
         self.v_answer = tk.StringVar()
         self.v_crop = [tk.StringVar() for _ in range(4)]
         self.v_say = tk.StringVar()
@@ -183,78 +183,37 @@ class App(tk.Tk):
         ff = ttk.Frame(L); ff.grid(row=r, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w"); r += 1
         ttk.Button(ff, text="Save project", command=self.save_project_file).pack(side="left")
         ttk.Button(ff, text="Open project", command=self.open_project_file).pack(side="left", padx=6)
-        # ---- Step 1
-        ttk.Label(L, text="1.  Pick a file", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(10, 2), sticky="w"); r += 1
-        ttk.Button(L, text="Choose a file (picture, PDF or 3D model)...", command=self.browse).grid(row=r, column=0, columnspan=2, **pad); r += 1
-        self.l_plan = ttk.Label(L, text="No file chosen yet. A plan picture, a PDF blueprint, or an STL / 3MF / OBJ / GLB model.",
-                                style="Hint.TLabel", wraplength=390)
+        ttk.Button(L, text="1   Open plan", style="Big.TButton", command=self.browse).grid(
+            row=r, column=0, columnspan=2, padx=10, pady=(12, 4), sticky="we"); r += 1
+        self.l_plan = ttk.Label(L, text="No plan yet.", style="Hint.TLabel", wraplength=390)
         self.l_plan.grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
+        self.b_questions = ttk.Button(L, text="2   Answer questions", style="Big.TButton",
+                                      command=self.open_question_dialog)
+        self.b_questions.grid(row=r, column=0, columnspan=2, padx=10, pady=4, sticky="we"); r += 1
+        self.b_questions.state(["disabled"])
+        ttk.Button(L, text="3   Check the 3D model", style="Big.TButton", command=self.focus_model).grid(
+            row=r, column=0, columnspan=2, padx=10, pady=4, sticky="we"); r += 1
+        ttk.Button(L, text="4   Save for printing", style="Big.TButton", command=self.save_for_printing).grid(
+            row=r, column=0, columnspan=2, padx=10, pady=4, sticky="we"); r += 1
+        ttk.Button(L, text="Make quote", style="Big.TButton", command=self.make_quote_quick).grid(
+            row=r, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="we"); r += 1
+        self.l_status = ttk.Label(L, text="Open a plan to start.", wraplength=390, justify="left")
+        self.l_status.grid(row=r, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w"); r += 1
+
+        # Widgets the rest of the app already uses. They live under More options.
+        self.b_run = ttk.Button(L, text="Build again", command=self.run_detect)
         self.b_unit = ttk.Button(L, text="Use just this unit (green outline)", command=self.auto_crop)
-        self.b_unit.grid(row=r, column=0, columnspan=2, **pad); r += 1
         self.l_crop = ttk.Label(L, text="", style="Hint.TLabel", wraplength=390)
-        self.l_crop.grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
-
-        ttk.Label(L, text="Tell me one measurement from the plan so the model is the right size:",
-                  wraplength=390).grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w"); r += 1
-        mf = ttk.Frame(L); mf.grid(row=r, column=0, columnspan=2, **pad); r += 1
-        ttk.Entry(mf, textvariable=self.v_measure, width=7).pack(side="left")
-        ttk.Label(mf, text="feet").pack(side="left", padx=(4, 10))
-        ttk.Button(mf, text="Show me where on the plan", command=self.start_measure).pack(side="left", fill="x", expand=True)
-        self.l_size = ttk.Label(L, text="Size: not set yet", style="Hint.TLabel", wraplength=390)
-        self.l_size.grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
-
-        # ---- Step 2
-        ttk.Label(L, text="2.  Build the 3D model", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(14, 2), sticky="w"); r += 1
-        self.b_run = ttk.Button(L, text="Build my 3D model", style="Big.TButton", command=self.run_detect)
-        self.b_run.grid(row=r, column=0, columnspan=2, **pad); r += 1
-
-        # ---- Quick questions (only shown while some are open)
+        self.l_size = ttk.Label(L, text="", style="Hint.TLabel", wraplength=390)
         self.qf = ttk.Frame(L)
-        self._qf_row = r; r += 1
-        ttk.Label(self.qf, text="Quick questions", style="Step.TLabel").pack(anchor="w", pady=(8, 0))
-        self.l_qnum = ttk.Label(self.qf, text="", style="Hint.TLabel")
-        self.l_qnum.pack(anchor="w")
-        self.l_qtext = ttk.Label(self.qf, text="", wraplength=390, justify="left")
-        self.l_qtext.pack(anchor="w", pady=(2, 4), fill="x")
+        self._qf_row = r
+        self.l_qnum = ttk.Label(self.qf, text="")
+        self.l_qtext = ttk.Label(self.qf, text="", wraplength=390)
         self.qrow_len = ttk.Frame(self.qf)
-        qe = ttk.Entry(self.qrow_len, textvariable=self.v_answer, width=14)
-        qe.pack(side="left")
-        qe.bind("<Return>", lambda _: self.quiz_answer())
-        ttk.Button(self.qrow_len, text="OK", command=self.quiz_answer).pack(side="left", padx=4)
         self.qrow_yn = ttk.Frame(self.qf)
-        ttk.Button(self.qrow_yn, text="Yes", width=8, command=lambda: self.quiz_answer("yes")).pack(side="left")
-        ttk.Button(self.qrow_yn, text="No", width=8, command=lambda: self.quiz_answer("no")).pack(side="left", padx=4)
-        self.b_qskip = ttk.Button(self.qf, text="Skip (keep my guess)", command=self.quiz_skip)
+        self.b_qskip = ttk.Button(self.qf, text="Skip")
         self._q = None
-
-        # ---- Step 3
-        ttk.Label(L, text="3.  Change the model", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(14, 2), sticky="w"); r += 1
-        ttk.Label(L, text="Type what you want changed:").grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
-        sf = ttk.Frame(L); sf.grid(row=r, column=0, columnspan=2, **pad); r += 1
-        e = ttk.Entry(sf, textvariable=self.v_say)
-        e.pack(side="left", fill="x", expand=True)
-        e.bind("<Return>", lambda _: self.say())
-        ttk.Button(sf, text="Change it", command=self.say).pack(side="left", padx=(6, 0))
-        ttk.Label(L, text='e.g. "make the walls 9 feet", "add a single bed at 120, 80",\n'
-                          '"add floor upstairs.png", "roof flat 6 inches", "bed 256 x 256 mm"',
-                  style="Hint.TLabel").grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
-
-        wf = ttk.Frame(L); wf.grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 3), sticky="we"); r += 1
-        ttk.Label(wf, text="Wall height").pack(side="left")
-        ttk.Entry(wf, textvariable=self.v_wall_ft, width=5).pack(side="left", padx=4)
-        ttk.Label(wf, text="feet").pack(side="left")
-        ttk.Button(wf, text="Set", command=self.set_wall_height).pack(side="left", padx=6)
-
-        ttk.Button(L, text="Add a wall  (then drag on the plan)", command=self.start_add).grid(row=r, column=0, columnspan=2, **pad); r += 1
-        self.l_sel = ttk.Label(L, text="Click a part on the plan to select it.", style="Hint.TLabel", wraplength=390)
-        self.l_sel.grid(row=r, column=0, columnspan=2, padx=10, pady=(6, 0), sticky="w"); r += 1
-        af = ttk.Frame(L); af.grid(row=r, column=0, columnspan=2, **pad); r += 1
-        ttk.Label(af, text="Move selected:").pack(side="left")
-        for t, d in [("Left", "left"), ("Right", "right"), ("Up", "up"), ("Down", "down")]:
-            ttk.Button(af, text=t, width=6, command=lambda d=d: self.move(d)).pack(side="left", padx=1)
-        bf = ttk.Frame(L); bf.grid(row=r, column=0, columnspan=2, **pad); r += 1
-        ttk.Button(bf, text="Delete selected", command=self.delete).pack(side="left", fill="x", expand=True)
-        ttk.Button(bf, text="Undo", command=self.undo).pack(side="left", fill="x", expand=True, padx=(6, 0))
+        self.l_sel = ttk.Label(L, text="", style="Hint.TLabel", wraplength=390)
         ttk.Button(bf, text="Redo", command=self.redo).pack(side="left", fill="x", expand=True, padx=(6, 0))
 
         # ---- Step 4 quote
@@ -331,8 +290,37 @@ class App(tk.Tk):
             ttk.Label(f, text=lab).grid(row=r, column=0, columnspan=2, **pad)
             ttk.Entry(f, textvariable=var, width=8).grid(row=r, column=2, **pad); r += 1
         ttk.Checkbutton(f, text="Faster: skip finding rooms", variable=self.v_skipcc).grid(row=r, column=0, columnspan=4, **pad); r += 1
-        ttk.Checkbutton(f, text="Try to find fixtures drawn on the plan (often wrong)",
+        ttk.Checkbutton(f, text="Place furniture drawn on the plan",
                         variable=self.v_fixtures).grid(row=r, column=0, columnspan=4, **pad); r += 1
+        self.b_unit.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        self.l_crop.grid(row=r, column=0, columnspan=4, padx=4, sticky="w"); r += 1
+        self.l_size.grid(row=r, column=0, columnspan=4, padx=4, sticky="w"); r += 1
+        mf = ttk.Frame(f); mf.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        ttk.Label(mf, text="One length (feet)").pack(side="left")
+        ttk.Entry(mf, textvariable=self.v_measure, width=7).pack(side="left", padx=4)
+        ttk.Button(mf, text="Show me where", command=self.start_measure).pack(side="left")
+        ttk.Label(f, text="Correct the model (plain language)", font=self.f_sub).grid(
+            row=r, column=0, columnspan=4, padx=4, pady=(8, 2), sticky="w"); r += 1
+        sf = ttk.Frame(f); sf.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        e = ttk.Entry(sf, textvariable=self.v_say)
+        e.pack(side="left", fill="x", expand=True)
+        e.bind("<Return>", lambda _: self.say())
+        ttk.Button(sf, text="Change it", command=self.say).pack(side="left", padx=(6, 0))
+        wf = ttk.Frame(f); wf.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        ttk.Label(wf, text="Wall height (feet)").pack(side="left")
+        ttk.Entry(wf, textvariable=self.v_wall_ft, width=5).pack(side="left", padx=4)
+        ttk.Button(wf, text="Set", command=self.set_wall_height).pack(side="left")
+        ttk.Button(f, text="Add a wall (then drag on the plan)", command=self.start_add).grid(
+            row=r, column=0, columnspan=4, **pad); r += 1
+        self.l_sel.grid(row=r, column=0, columnspan=4, padx=4, sticky="w"); r += 1
+        af = ttk.Frame(f); af.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        ttk.Label(af, text="Move selected").pack(side="left")
+        for t, d in [("Left", "left"), ("Right", "right"), ("Up", "up"), ("Down", "down")]:
+            ttk.Button(af, text=t, width=6, command=lambda d=d: self.move(d)).pack(side="left", padx=1)
+        bf = ttk.Frame(f); bf.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        ttk.Button(bf, text="Delete selected", command=self.delete).pack(side="left")
+        ttk.Button(bf, text="Undo", command=self.undo).pack(side="left", padx=6)
+        self.b_run.grid(row=r, column=0, columnspan=2, **pad); r += 1
 
         ttk.Label(f, text="Area of the plan to use (pixels)", font=self.f_sub).grid(row=r, column=0, columnspan=4, padx=4, pady=(8, 2), sticky="w"); r += 1
         cf = ttk.Frame(f); cf.grid(row=r, column=0, columnspan=4, **pad); r += 1
@@ -642,10 +630,11 @@ class App(tk.Tk):
                       "click \"Use just this unit\" so the neighbours aren't built too.")
         else:
             self.b_unit.state(["disabled"])
-            self.tell(f"Loaded {Path(p).name}.")
+            self.tell(f"Loaded {Path(p).name}. I'll build it now.")
         self._update_size_label()
         self.refresh_parts()
         self.redraw()
+        self.after(200, lambda: self.run_detect(auto=True))
 
     def auto_crop(self):
         if not self.v_plan.get().strip():
@@ -835,7 +824,87 @@ class App(tk.Tk):
         self.tell("Writing the customer quote...")
         self._bg(work)
 
-    def run_detect(self):
+    def focus_model(self):
+        self.cv3.focus_set()
+        self.tell("This is the 3D model. Drag it to turn it. Scroll to zoom.")
+
+    def save_for_printing(self):
+        if not self.built():
+            return self._err("Open a plan first. The print files appear after the model is built.")
+        job = self.job()
+        self.tell(f"Print files are in out/{job.name}/. Use model.3mf or model.stl.")
+        messagebox.showinfo("Save for printing",
+                            f"The files are already saved in:\nout/{job.name}/\n\n"
+                            "Open model.3mf (colours) or model.stl in your slicer.")
+
+    def make_quote_quick(self):
+        if not self.built():
+            return self._err("Build the model before making a quote.")
+        self.save_quote()
+
+    def open_question_dialog(self):
+        """One question at a time, in its own window. Not a hidden panel."""
+        if getattr(self, "_question_open", False) or self.busy or not self.built():
+            return
+        left = Q.pending(self.job(), self.params, self.polys)
+        if not left:
+            self.b_questions.configure(text="2   Questions answered")
+            return
+        q = left[0]
+        self._question_open = True
+        win = tk.Toplevel(self)
+        win.title("House Plan 3D")
+        win.transient(self)
+        win.grab_set()
+        ttk.Label(win, text=f"Question 1 of {len(left)}", font=self.f_step).pack(anchor="w", padx=16, pady=(14, 4))
+        ttk.Label(win, text=q["text"], wraplength=440, justify="left").pack(anchor="w", padx=16, pady=(0, 10))
+        var = tk.StringVar()
+        if q["kind"] != "yesno":
+            box = ttk.Entry(win, textvariable=var, width=24)
+            box.pack(anchor="w", padx=16)
+            box.focus_set()
+
+        def close():
+            self._question_open = False
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+
+        def finish(text):
+            before = self._capture()
+            try:
+                msg, _need = Q.answer(self.job(), self.params, q["id"], text, self.selected)
+            except ValueError as e:
+                messagebox.showerror("House Plan 3D", friendly(e), parent=win)
+                return
+            self._remember(before)
+            self.tell(msg)
+            close()
+            self.after_build(announce=False)
+            if Q.pending(self.job(), self.params, self.polys):
+                self.after(80, self.open_question_dialog)
+
+        def skip():
+            before = self._capture()
+            self.tell(Q.skip(self.job(), self.params, q["id"]))
+            self._remember(before)
+            close()
+            self.after_build(announce=False)
+            if Q.pending(self.job(), self.params, self.polys):
+                self.after(80, self.open_question_dialog)
+
+        row = ttk.Frame(win)
+        row.pack(anchor="w", padx=16, pady=14)
+        if q["kind"] == "yesno":
+            ttk.Button(row, text="Yes", command=lambda: finish("yes")).pack(side="left")
+            ttk.Button(row, text="No", command=lambda: finish("no")).pack(side="left", padx=6)
+        else:
+            ttk.Button(row, text="OK", command=lambda: finish(var.get())).pack(side="left")
+        ttk.Button(row, text="Skip (keep the guess)", command=skip).pack(side="left", padx=6)
+        win.protocol("WM_DELETE_WINDOW", close)
+
+    def run_detect(self, auto=False):
         try:
             plan = self.v_plan.get().strip()
             if not plan or not Path(plan).exists():
@@ -845,10 +914,12 @@ class App(tk.Tk):
             is_mesh = file_kind(plan) == "mesh"
             crop = self._crop()
             if not crop and getattr(self, "_green", None):
-                if messagebox.askyesno("Just this unit?", "This plan has a green outline around one unit.\n"
-                                       "Build only that unit? (No = build the whole page)"):
+                if auto:
                     self.auto_crop(); crop = self._crop()
-            if not is_pdf and not is_mesh and not ppi:
+                elif messagebox.askyesno("Just this unit?", "This plan has a green outline around one unit.\n"
+                                         "Build only that unit? (No = build the whole page)"):
+                    self.auto_crop(); crop = self._crop()
+            if not auto and not is_pdf and not is_mesh and not ppi:
                 if not messagebox.askyesno("Size not set", "You haven't given me a measurement yet, so the model's size "
                                            "will be wrong.\nBuild a rough preview anyway?"):
                     return
@@ -907,13 +978,20 @@ class App(tk.Tk):
             st = rep.get("stages", {}).get("editor_rebuild", {})
             ext = st.get("extent_in")
             size = f"about {feet_text(ext[0])} wide x {feet_text(ext[1])} deep x {feet_text(ext[2])} tall" if ext else ""
-            rough = "" if "px_per_inch" in p.user_set else " (size is a guess until you answer)"
+            rough = "" if "px_per_inch" in p.user_set or (rep.get("scale") or {}).get("measured") else " Size is a guess until you answer."
             left = rep.get("review", {}).get("pending", [])
-            status = "Checked: every question answered or skipped." if rep.get("review", {}).get("status") == "done" \
-                else f"Not done yet: {len(left)} quick question(s) left."
-            self.l_files.configure(text=f"Model {size}{rough}.\n{status}\nSaved in out/{job.name}/  (model.3mf / model.stl for printing)")
+            if left:
+                self.b_questions.state(["!disabled"])
+                self.b_questions.configure(text=f"Answer {len(left)} questions to finish")
+                status = f"Not finished. Answer {len(left)} questions, then check the 3D model."
+            else:
+                self.b_questions.state(["!disabled"])
+                self.b_questions.configure(text="2   Questions answered")
+                status = "Questions are answered. Check the 3D model, then save for printing."
+            self.l_status.configure(text=status)
+            self.l_files.configure(text=f"Model {size}.{rough}\n{status}\nSaved in out/{job.name}/")
             if announce:
-                self.tell(f"Built! Model is {size}.")
+                self.tell(status if left else f"Built. Model is {size}.")
                 if p.source_kind == "mesh":
                     c = rep.get("polygon_counts", {})
                     mi = rep.get("stages", {}).get("mesh_import", {})
@@ -925,8 +1003,19 @@ class App(tk.Tk):
                         self.tell("Note: " + line)
                 else:
                     n = len(self.polys.get("wall", []))
-                    self.tell(f"I found {n} wall pieces. If walls are missing, use \"Add a wall\" and drag where it goes.")
+                    furn = len(self.polys.get("furniture", []))
+                    note = ""
+                    for stage in (rep.get("stages") or {}).values():
+                        if isinstance(stage, dict) and stage.get("wall_note"):
+                            note = stage["wall_note"]
+                    self.tell(note or f"I found {n} wall pieces.")
+                    if furn:
+                        self.tell(f"I placed {furn} piece(s) of furniture that are drawn on the plan.")
+                    elif n < 3:
+                        self.tell("I still see almost no walls. Open More options and add a wall if a line was missed.")
             self.show_quiz(announce)
+            if announce and left:
+                self.after(200, self.open_question_dialog)
         self._cache_preview()
         if self._view_live:
             self._schedule_view(quality=True)
@@ -949,19 +1038,10 @@ class App(tk.Tk):
                 self.tell("All questions done. The model is marked as checked "
                           f"(out/{job.name}/report.json). Anything you skipped is still listed as a guess.")
             return
-        q = left[0]
-        new = self._q is None or self._q["id"] != q["id"]
-        self._q = q
-        self.qf.grid(row=self._qf_row, column=0, columnspan=2, padx=10, sticky="we")
-        n_done = len(self.params.quiz or {})
-        self.l_qnum.configure(text=f"Question {n_done + 1} of {n_done + len(left)}  -  needed before the model counts as done")
-        self.l_qtext.configure(text=q["text"])
-        self.qrow_len.pack_forget(); self.qrow_yn.pack_forget(); self.b_qskip.pack_forget()
-        (self.qrow_yn if q["kind"] == "yesno" else self.qrow_len).pack(anchor="w", pady=2)
-        self.b_qskip.pack(anchor="w", pady=(2, 4))
-        if new:
-            self.v_answer.set("")
-            self.tell("Question: " + q["text"].split("\n")[0])
+        self._q = left[0]
+        self.qf.grid_remove()
+        self.b_questions.state(["!disabled"])
+        self.b_questions.configure(text=f"Answer {len(left)} questions to finish")
 
     def quiz_answer(self, text=None):
         q = self._q

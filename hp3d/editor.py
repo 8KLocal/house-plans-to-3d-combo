@@ -52,7 +52,7 @@ class JobParams:
     measured: list = field(default_factory=list)   # params read from the file itself (not defaults)
     quiz: dict = field(default_factory=dict)       # question id -> {"answer", "how"} (see hp3d.quiz)
     scale_source: str = ""                         # where a not-user-set scale came from (e.g. "the DXF file's units")
-    find_fixtures: bool = False                    # opt-in: fixture blocks from CubiCasa icons (often wrong)
+    find_fixtures: bool = True                     # place drawn furniture on the first build
     levels: list = field(default_factory=list)    # floors above the first: {"plan", "wall_h", "floor_t"}
     roof: str = "none"                            # "none" | "flat" | "gable" (only what the user asked for)
     roof_thickness_in: float | None = None
