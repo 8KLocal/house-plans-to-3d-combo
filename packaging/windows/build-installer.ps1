@@ -78,7 +78,8 @@ function Get-File {
 function Copy-Robo {
   param([string]$Src, [string]$Dst, [string[]]$ExcludeDirs)
   New-Item -ItemType Directory -Force -Path $Dst | Out-Null
-  $robo = @($Src, $Dst, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
+  # Submodule checkouts have a .git file, not a directory. /XD does not skip files.
+  $robo = @($Src, $Dst, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/XF", ".git")
   if ($ExcludeDirs) { $robo += @("/XD") + $ExcludeDirs }
   & robocopy @robo
   if ($LASTEXITCODE -ge 8) { throw "robocopy $Src -> $Dst failed (exit $LASTEXITCODE)" }
