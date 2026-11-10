@@ -11,6 +11,7 @@ pillow
 matplotlib
 pyfiglet                             # FloorplanToBlender3d
 shapely>=2                           # CubiCasa5k + 3D build
+pyclipper>=1.2                       # text boxes for the bundled RapidOCR models
 scikit-image                         # CubiCasa5k
 svgpathtools                         # CubiCasa5k
 lmdb                                 # CubiCasa5k loaders

@@ -23,18 +23,20 @@ PART_COLORS: dict[str, tuple[int, int, int, int]] = {
     "windows": (60, 150, 220, 255),       # blue
     "door_frames": (230, 120, 50, 255),   # orange
     "furniture": (90, 160, 80, 255),      # green
+    "stairs": (176, 122, 70, 255),        # stair treads
     "roof": (176, 186, 196, 255),         # light grey-blue; only when the user asked for a roof
 }
 PART_LABELS = {"floor": "Floor", "walls": "Walls", "windows": "Windows", "door_frames": "Door frames",
-               "furniture": "Furniture"}
-PART_ORDER = ("floor", "walls", "door_frames", "windows", "furniture")
+               "furniture": "Furniture", "stairs": "Stairs", "roof": "Roof"}
+PART_ORDER = ("floor", "walls", "door_frames", "windows", "stairs", "furniture", "roof")
 # Plan polygon kind -> built part name.
 KIND_TO_PART = {"wall": "walls", "door": "door_frames", "window": "windows", "furniture": "furniture",
-                "floor": "floor"}
+                "floor": "floor", "stair": "stairs"}
 FALLBACK = (200, 200, 200, 255)
 
 # 2D plan colours (the app and plan_overlay.png); same hues, walls drawn darker for contrast on paper.
-PLAN_RGB = {"wall": (40, 40, 45), "door": (230, 120, 50), "window": (60, 150, 220), "furniture": (90, 160, 80)}
+PLAN_RGB = {"wall": (40, 40, 45), "door": (230, 120, 50), "window": (60, 150, 220), "furniture": (90, 160, 80),
+            "stair": (176, 122, 70)}
 
 
 def hex_of(rgb) -> str:

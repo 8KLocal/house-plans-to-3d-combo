@@ -364,8 +364,7 @@ def detect(job: Path, params: JobParams, log=print) -> dict:
     params.source_kind, params.scale_source = "plan", ""
     plan = load_plan(params.plan, dpi=params.dpi)
     if not plan.is_pdf and not params.px_per_inch and not plan.px_per_inch:
-        log("WARNING: raster plan with no px-per-inch. The model will be in pixels, not inches, and mis-sized. "
-            "Measure one printed dimension and set the scale.")
+        log("No scale yet. Dimension labels on the plan will be read before any size is assumed.")
     if plan.px_per_inch and not params.px_per_inch:
         params.px_per_inch = round(plan.px_per_inch, 6)
         params.scale_source = "the DXF file's own units"
@@ -388,9 +387,17 @@ def detect(job: Path, params: JobParams, log=print) -> dict:
     if inp != src:
         Image.fromarray(plan.rgb).save(src)
     (job / "polygons_detected.json").write_text((job / "polygons.json").read_text())
-    if not params.px_per_inch and rep.get("scale", {}).get("px_per_inch"):
-        params.px_per_inch = rep["scale"]["px_per_inch"]
-        params.log(f"scale estimated by Dimractor: {params.px_per_inch:.4f} px/in (verify before printing)")
+    scale = rep.get("scale") or {}
+    if scale.get("measured") and "px_per_inch" not in params.user_set:
+        params.px_per_inch = scale["px_per_inch"]
+        params.scale_source = scale.get("source") or ""
+        if "px_per_inch" not in params.measured:
+            params.measured.append("px_per_inch")
+        params.log(f"scale read from dimension labels: {params.px_per_inch:.4f} px/in")
+    elif not params.px_per_inch and scale.get("px_per_inch"):
+        params.px_per_inch = scale["px_per_inch"]
+        params.scale_source = scale.get("source") or "estimated from printed room dimensions"
+        params.log(f"scale {params.px_per_inch:.4f} px/in from {params.scale_source} (verify before printing)")
     params.detected_for = {"plan": params.plan, "crop": params.crop, "dpi": params.dpi}
     if params.find_fixtures:
         params.detected_for["fixtures"] = True
@@ -417,6 +424,8 @@ def assumptions(params: JobParams) -> list[str]:
                  "1 inch is a placeholder. Give one real length.")
     elif not params.px_per_inch:
         a.append("Scale UNKNOWN: 1 px = 1 inch placeholder. The model size is wrong until px-per-inch is set.")
+    elif "px_per_inch" in params.measured:
+        a.append(f"Scale {params.px_per_inch:g} px/in was read from the plan's dimension labels.")
     elif "px_per_inch" not in params.user_set and params.scale_source:
         a.append(f"Scale {params.px_per_inch:g} px/in comes from {params.scale_source}; verify one known wall.")
     elif "px_per_inch" not in params.user_set:
@@ -426,8 +435,10 @@ def assumptions(params: JobParams) -> list[str]:
         if k in params.user_set:
             continue
         if k in params.measured:
-            a.append(f"{n} {getattr(params, k)} in was measured from the 3D file" +
-                     (" at the size you gave." if "px_per_inch" in params.user_set else " (right once the size is right)."))
+            size_note = (" at the size you gave." if "px_per_inch" in params.user_set else
+                         " at the size read from the plan." if "px_per_inch" in params.measured else
+                         " (right once the size is right).")
+            a.append(f"{n} {getattr(params, k)} in was measured from the 3D file" + size_note)
         else:
             a.append(f"{n} {getattr(params, k)} in is a default, not read from the plan.")
     if mesh:
@@ -539,6 +550,11 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
     rep["crop"] = {"box_px": params.crop, "source": params.crop_source}
     rep["polygon_counts"] = counts(polys)
     rep["assumptions"] = assumptions(params) + floor_notes
+    if rep.get("confidence"):
+        from .confidence import refresh_defaults
+        rep["confidence"] = refresh_defaults(
+            rep["confidence"], params.user_set, params.measured,
+            {k: getattr(params, k) for k in ("sill", "lintel", "wall_h")})
     if logo["status"] != "ok":
         rep["assumptions"].append(f"Underside logo not added: {logo.get('reason')}")
     try:
@@ -572,7 +588,8 @@ def render_overlay(job: Path, polys: dict | None = None, selected: tuple | None 
     base = Image.open(job / "source_crop.png").convert("RGB")
     img = Image.blend(base, Image.new("RGB", base.size, (255, 255, 255)), 0.6)
     d = ImageDraw.Draw(img, "RGBA")
-    for k in KINDS:
+    draw_kinds = list(KINDS) + [k for k in polys if k not in KINDS and k in OVERLAY_COLORS]
+    for k in draw_kinds:
         for i, p in enumerate(polys.get(k, [])):
             pts = [tuple(v) for v in p["outer"]]
             if len(pts) < 3:

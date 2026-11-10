@@ -46,3 +46,15 @@ def _windows_cairo() -> None:
 
 
 _windows_cairo()
+
+
+def _quote_label_scale() -> None:
+    """A scale read from dimension labels is a measurement the quote can price."""
+    try:
+        from .ocr_dims import install_quote_hook
+        install_quote_hook()
+    except Exception:  # noqa: BLE001
+        return
+
+
+_quote_label_scale()
