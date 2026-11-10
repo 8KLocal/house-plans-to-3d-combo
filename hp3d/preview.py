@@ -1,14 +1,26 @@
-"""Headless PNG previews: coloured isometric 3D view (numpy z-buffer) and underside view (matplotlib)."""
+"""Headless PNG previews: coloured 3D views (numpy z-buffer), a faster orbit view, and the underside."""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.collections import PolyCollection  # noqa: E402
 import trimesh  # noqa: E402
+
+from .colors import PART_LABELS, color_of, ordered
+
+# Camera presets shared by the on-screen orbit and the customer quote.
+HOME_VIEW = {"elev": 52.0, "azim": -60.0, "zoom": 1.0}
+TOP_VIEW = {"elev": 90.0, "azim": -90.0, "zoom": 1.0}
+THREE_QUARTER_VIEW = {"elev": 30.0, "azim": -45.0, "zoom": 1.0}
+VIEWS = {"home": HOME_VIEW, "top": TOP_VIEW, "three_quarter": THREE_QUARTER_VIEW}
 
 
 def _load_parts(src) -> dict:
@@ -30,29 +42,32 @@ def _load_parts(src) -> dict:
     return {"model": loaded}
 
 
+def _basis(azim: float, elev: float):
+    """Camera axes. ``view`` points from the camera into the scene."""
+    a, e = np.radians(azim), np.radians(elev)
+    view = -np.array([np.cos(e) * np.cos(a), np.cos(e) * np.sin(a), np.sin(e)])
+    right = np.array([-np.sin(a), np.cos(a), 0.0])
+    up = np.cross(right, view)
+    return view, right, up
+
+
 def render(src, png: Path, pal: dict | None = None, size: tuple[int, int] = (900, 820),
-           elev: float = 52.0, azim: float = -60.0, legend: bool = True, ss: int = 2) -> None:
+           elev: float = HOME_VIEW["elev"], azim: float = HOME_VIEW["azim"], legend: bool = True, ss: int = 2,
+           zoom: float = 1.0):
     """Coloured isometric preview (software z-buffer, so no see-through faces or scribbles).
 
     ``src`` is a dict ``{part name: mesh}`` (coloured by ``hp3d.colors``) or a mesh file.
     Each part is flat-shaded in its colour, back faces are culled, and creases are
     outlined a little darker. A legend lists the parts that are present.
     """
-    import numpy as np
-    from PIL import Image, ImageDraw, ImageFont
-
-    from .colors import PART_LABELS, color_of, ordered
     parts = {k: m for k, m in _load_parts(src).items() if len(m.faces)}
     W, H = size[0] * ss, size[1] * ss
     img = np.full((H, W, 3), 255.0)
     if not parts:
-        Image.fromarray(img.astype(np.uint8)).save(png)
-        return
-    a, e = np.radians(azim), np.radians(elev)
-    # camera basis: view direction from the viewer toward the scene
-    view = -np.array([np.cos(e) * np.cos(a), np.cos(e) * np.sin(a), np.sin(e)])
-    right = np.array([-np.sin(a), np.cos(a), 0.0])
-    up = np.cross(right, view)
+        empty = Image.fromarray(img.astype(np.uint8))
+        empty.save(png)
+        return empty
+    view, right, up = _basis(azim, elev)
     allv = np.vstack([m.vertices for m in parts.values()])
     ctr = (allv.min(0) + allv.max(0)) / 2
 
@@ -63,7 +78,8 @@ def render(src, png: Path, pal: dict | None = None, size: tuple[int, int] = (900
     P = proj(allv)
     lo, hi = P[:, :2].min(0), P[:, :2].max(0)
     leg_h = (2 * (max(14, size[0] // 30) + 10) + 8) * ss if legend else 0
-    sc = min((W * 0.94) / max(hi[0] - lo[0], 1e-9), (H * 0.94 - leg_h) / max(hi[1] - lo[1], 1e-9))
+    zoom = max(float(zoom), 0.05)
+    sc = zoom * min((W * 0.94) / max(hi[0] - lo[0], 1e-9), (H * 0.94 - leg_h) / max(hi[1] - lo[1], 1e-9))
     ox = W / 2 - sc * (lo[0] + hi[0]) / 2
     oy = (H - leg_h) / 2 + sc * (lo[1] + hi[1]) / 2
 
@@ -149,6 +165,7 @@ def render(src, png: Path, pal: dict | None = None, size: tuple[int, int] = (900
                 d.text((x + fs + 8, y - fs // 8), PART_LABELS.get(k, k), fill=(40, 40, 40), font=font)
             y += fs + 10
     im.save(png)
+    return im
 
 
 if __name__ == "__main__":
@@ -162,9 +179,6 @@ def render_underside(mesh_path: Path, png: Path, title: str | None = None) -> No
     surface is light, anything recessed up to 3 units deep (the logo) is dark.
     A second panel zooms on the recess when there is one.
     """
-    import numpy as np
-    from matplotlib.collections import PolyCollection
-
     m = trimesh.load(mesh_path, force="mesh")
     m.apply_transform(np.diag([-1, 1, -1, 1]))          # flip over: x -> -x, z -> -z
     up = m.face_normals[:, 2] > 1e-6
@@ -194,3 +208,78 @@ def render_underside(mesh_path: Path, png: Path, title: str | None = None) -> No
         ax.set_aspect("equal"); ax.set_axis_off()
     fig.savefig(png, dpi=130, bbox_inches="tight")
     plt.close(fig)
+
+
+def render_painter(src, png: Path | None = None, pal: dict | None = None, size: tuple[int, int] = (640, 480),
+                   elev: float = HOME_VIEW["elev"], azim: float = HOME_VIEW["azim"], zoom: float = 1.0,
+                   legend: bool = True) -> Image.Image:
+    """Fast coloured preview for orbiting. Faces are flat-shaded in part colours.
+
+    The quality ``render`` path is a z-buffer and is what the saved preview and
+    the quote use. This one draws far faces first so a drag stays responsive.
+    """
+    parts = {k: m for k, m in _load_parts(src).items() if len(m.faces)}
+    width, height = size
+    image = Image.new("RGB", (width, height), (255, 255, 255))
+    if not parts:
+        if png is not None:
+            image.save(png)
+        return image
+    view, right, up = _basis(azim, elev)
+    light = np.array([-0.35, -0.55, 0.76])
+    light /= np.linalg.norm(light)
+    allv = np.vstack([m.vertices for m in parts.values()])
+    centre = (allv.min(0) + allv.max(0)) / 2
+    projected = np.stack([(allv - centre) @ right, (allv - centre) @ up], axis=-1)
+    lo, hi = projected.min(0), projected.max(0)
+    legend_h = 28 if legend else 0
+    zoom = max(float(zoom), 0.05)
+    scale = zoom * min((width * 0.90) / max(hi[0] - lo[0], 1e-9), ((height - legend_h) * 0.90) / max(hi[1] - lo[1], 1e-9))
+    origin_x = width / 2 - scale * (lo[0] + hi[0]) / 2
+    origin_y = (height - legend_h) / 2 + scale * (lo[1] + hi[1]) / 2
+    depths: list[float] = []
+    polys: list[tuple] = []
+    for key in ordered(parts):
+        mesh = parts[key]
+        base = np.array(color_of(key, pal)[:3], float)
+        normals = mesh.face_normals
+        front = normals @ view < -1e-6
+        if not np.any(front):
+            continue
+        shade = 0.62 + 0.38 * np.clip(normals[front] @ light, 0, 1)
+        colours = np.clip(base * shade[:, None], 0, 255).astype(np.uint8)
+        tri = mesh.triangles[front] - centre
+        screen_x = origin_x + scale * (tri @ right)
+        screen_y = origin_y - scale * (tri @ up)
+        depth = (tri @ view).mean(axis=1)
+        for sx, sy, z, colour in zip(screen_x, screen_y, depth, colours):
+            fill = (int(colour[0]), int(colour[1]), int(colour[2]))
+            edge = tuple(max(0, channel - 45) for channel in fill)
+            pts = [(float(sx[i]), float(sy[i])) for i in range(3)]
+            depths.append(float(z))
+            polys.append((fill, edge, pts))
+    draw = ImageDraw.Draw(image)
+    for index in np.argsort(np.asarray(depths))[::-1]:
+        fill, edge, pts = polys[int(index)]
+        draw.polygon(pts, fill=fill, outline=edge)
+    if legend:
+        _legend(image, ordered(parts), pal)
+    if png is not None:
+        image.save(png)
+    return image
+
+
+def _legend(image: Image.Image, keys: list[str], pal) -> None:
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 13)
+    except OSError:
+        font = ImageFont.load_default()
+    x, y = 8, image.height - 22
+    for key in keys:
+        draw.rectangle([x, y, x + 12, y + 12], fill=tuple(color_of(key, pal)[:3]), outline=(60, 60, 60))
+        label = PART_LABELS.get(key, key)
+        draw.text((x + 16, y - 1), label, fill=(40, 40, 40), font=font)
+        x += 16 + int(draw.textlength(label, font=font)) + 14
+        if x > image.width - 60:
+            break

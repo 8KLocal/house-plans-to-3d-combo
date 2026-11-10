@@ -232,6 +232,7 @@ HELP = """Phrases I understand (one per line, or join with 'and' / ';'):
   resize selected to 39 inches by 75 inches | make selected 24 inches tall
   furniture 30 inches   (height of plain blocks that have no measured height)
   widen selected 20% | narrow selected 10% | make selected 2x taller
+  undo | redo
   rebuild | help
 Every length needs a unit; a bare number is rejected rather than guessed."""
 
@@ -251,8 +252,10 @@ def parse_command(text: str) -> list[dict]:
             actions.append({"op": "help"}); continue
         if lc in ("rebuild", "rebuild it", "rebuild the model", "update", "refresh"):
             actions.append({"op": "rebuild"}); continue
-        if lc in ("undo", "undo that", "undo last"):
+        if lc in ("undo", "undo that", "undo last", "undo it"):
             actions.append({"op": "undo"}); continue
+        if lc in ("redo", "redo that", "redo last", "redo it"):
+            actions.append({"op": "redo"}); continue
         m = re.match(r"^(?:set\s+)?(?:the\s+)?scale\s*(?:to|=|is|at|of)?\s*" + _NUM + r"(?:\s*(?:px|pixels?)\s*(?:/|per)\s*(?:in|inch))?$", lc) \
             or re.match(r"^(?:set\s+)?" + _NUM + r"\s*(?:px|pixels?)\s*(?:/|per)\s*(?:in|inch)$", lc) \
             or re.match(r"^(?:set\s+)?px[-\s]?per[-\s]?inch\s*(?:to|=)?\s*" + _NUM + "$", lc)
@@ -520,7 +523,9 @@ def apply_actions(job: Path, params: JobParams, actions: list[dict], selected: t
         elif op == "rebuild":
             rebuild_needed = True
         elif op == "undo":
-            msgs.append("undo: use the Undo button (it restores the previous polygons/params).")
+            msgs.append("undo: use the Undo button (it restores the previous polygons and settings).")
+        elif op == "redo":
+            msgs.append("redo: use the Redo button (it puts back what you just undid).")
         elif op == "set":
             p, v = a["param"], a["value"]
             trial = {k: getattr(params, k) for k in ("wall_h", "floor_t", "sill", "lintel")}
