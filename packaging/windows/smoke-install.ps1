@@ -67,14 +67,32 @@ print('gui import ok', here)
   if ($LASTEXITCODE -ne 0) { Fail "GUI import failed" }
 
   Say "import the GUI module with pythonw (no console)"
-  $proc = Start-Process -FilePath $pyw -WorkingDirectory $env:TEMP -PassThru -WindowStyle Hidden -ArgumentList @(
-    "-s", "-c", "import hp3d.app"
-  )
+  # pythonw has no console, and Start-Process splits "-c <code with spaces>".
+  # The script writes a marker file so a failure is visible in the log.
+  $marker = Join-Path $env:TEMP "hp3d-pythonw.txt"
+  $script = Join-Path $env:TEMP "hp3d_pythonw_import.py"
+  if (Test-Path $marker) { Remove-Item $marker -Force }
+  @"
+import traceback
+path = r'$marker'
+try:
+    import hp3d.app
+    open(path, 'w', encoding='utf-8').write('ok ' + hp3d.app.__file__)
+except Exception:
+    open(path, 'w', encoding='utf-8').write(traceback.format_exc())
+    raise
+"@ | Set-Content -Path $script -Encoding ascii
+  $proc = Start-Process -FilePath $pyw -WorkingDirectory $env:TEMP -PassThru -WindowStyle Hidden -ArgumentList @("-s", $script)
   if (-not $proc.WaitForExit(120000)) {
     try { $proc.Kill() } catch {}
     Fail "pythonw import timed out"
   }
-  if ($proc.ExitCode -ne 0) { Fail "pythonw -c import hp3d.app exit $($proc.ExitCode)" }
+  $markerText = if (Test-Path $marker) { Get-Content -Raw $marker } else { "" }
+  if ($proc.ExitCode -ne 0 -or $markerText -notlike "ok *") {
+    Write-Host $markerText
+    Fail "pythonw import failed (exit $($proc.ExitCode))"
+  }
+  Say ($markerText.Trim())
 
   Say "core libraries and Cairo"
   & $py -s -c @"
