@@ -24,10 +24,11 @@ PART_COLORS: dict[str, tuple[int, int, int, int]] = {
     "door_frames": (230, 120, 50, 255),   # orange
     "furniture": (90, 160, 80, 255),      # green
     "stairs": (176, 122, 70, 255),        # stair treads
+    "roof": (176, 186, 196, 255),         # light grey-blue; only when the user asked for a roof
 }
 PART_LABELS = {"floor": "Floor", "walls": "Walls", "windows": "Windows", "door_frames": "Door frames",
-               "furniture": "Furniture", "stairs": "Stairs"}
-PART_ORDER = ("floor", "walls", "door_frames", "windows", "stairs", "furniture")
+               "furniture": "Furniture", "stairs": "Stairs", "roof": "Roof"}
+PART_ORDER = ("floor", "walls", "door_frames", "windows", "stairs", "furniture", "roof")
 # Plan polygon kind -> built part name.
 KIND_TO_PART = {"wall": "walls", "door": "door_frames", "window": "windows", "furniture": "furniture",
                 "floor": "floor", "stair": "stairs"}
@@ -55,8 +56,20 @@ def palette(overrides: dict | None = None) -> dict[str, tuple[int, int, int, int
     return pal
 
 
+def part_family(name: str) -> str:
+    """``floor`` and ``L2_floor`` share a colour. Longest known name wins (``door_frames`` before any shorter suffix)."""
+    for key in sorted(PART_COLORS, key=len, reverse=True):
+        if name == key or name.endswith("_" + key):
+            return key
+    return name
+
+
 def color_of(part: str, pal: dict | None = None) -> tuple[int, int, int, int]:
-    return (pal or PART_COLORS).get(part, FALLBACK)
+    table = pal or PART_COLORS
+    family = part_family(part)
+    if family in table:
+        return table[family]
+    return table.get(part, FALLBACK)
 
 
 def ordered(parts: dict) -> list[str]:

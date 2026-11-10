@@ -6,8 +6,8 @@
 [Setup]
 AppId={{E7A1C4D2-9B63-4F18-8A05-3C6D1E9F4B27}}
 AppName=House Plan 3D
-AppVersion=0.1.0
-AppVerName=House Plan 3D 0.1.0
+AppVersion=0.2.0
+AppVerName=House Plan 3D 0.2.0
 AppPublisher=8K by AK
 DefaultDirName={localappdata}\House Plan 3D
 DisableProgramGroupPage=yes
@@ -28,13 +28,17 @@ DiskSpanning=no
 UninstallDisplayName=House Plan 3D
 UninstallDisplayIcon={app}\python\pythonw.exe
 InfoBeforeFile=INSTALL_INFO.txt
-CloseApplications=no
+; Close the running app when an update passes /CLOSEAPPLICATIONS.
+; Do not let Windows restart it as well: /UPDATE=1 relaunches one copy.
+CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=0.1.0.0
+VersionInfoVersion=0.2.0.0
 VersionInfoProductName=House Plan 3D
-VersionInfoProductVersion=0.1.0
+VersionInfoProductVersion=0.2.0
 VersionInfoDescription=House Plan 3D setup
 
+; out\ and any .hp3d project the user saved are not in this list, so an
+; upgrade overwrites the program and leaves those files where they are.
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -44,4 +48,13 @@ Name: "{autoprograms}\House Plan 3D"; Filename: "{app}\python\pythonw.exe"; Para
 Name: "{autodesktop}\House Plan 3D"; Filename: "{app}\python\pythonw.exe"; Parameters: "-s -m hp3d.app"; WorkingDir: "{app}"
 
 [Run]
+; Ordinary setup: a checkbox, skipped for /SILENT and /VERYSILENT (the CI install).
 Filename: "{app}\python\pythonw.exe"; Parameters: "-s -m hp3d.app"; WorkingDir: "{app}"; Description: "Launch House Plan 3D"; Flags: nowait postinstall skipifsilent
+; In-app update passes /UPDATE=1 and should open the app again after it quits.
+Filename: "{app}\python\pythonw.exe"; Parameters: "-s -m hp3d.app"; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunch
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;

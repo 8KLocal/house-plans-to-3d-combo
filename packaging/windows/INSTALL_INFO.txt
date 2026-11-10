@@ -6,4 +6,6 @@ This installer is not signed. If Windows SmartScreen says "Windows protected you
 
 Python, the libraries, Cairo, sample plans, and the detection weights are included. You do not install Python yourself.
 
+An update installs over the old copy. Your out folder and any .hp3d project you saved are left in place.
+
 The bundled projects are fine for your own testing. They are not cleanly licensed for sale (GPL, AGPL PyMuPDF, CubiCasa CC BY-NC, and an unlicensed component). See WINDOWS.md in the install folder.

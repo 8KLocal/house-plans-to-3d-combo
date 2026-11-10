@@ -5,6 +5,11 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Version to publish as Latest, for example 0.2.0. Empty builds and smoke-tests only."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -51,15 +56,15 @@ jobs:
         shell: pwsh
         run: ./packaging/windows/check-size.ps1 -Installer "${{ steps.build.outputs.installer }}"
 
-      # Publish as soon as the exe exists. A later smoke failure must not block the download.
-      # Not a prerelease: /releases/latest/download/ only follows a non-prerelease release.
-      # Pull requests build the installer so CI can go green. They do not publish a release.
+      # Publishing is explicit. Pull requests and ordinary master pushes must not replace
+      # releases/latest while several feature branches are landing. Dispatch with release=0.2.0
+      # after master is complete. Not a prerelease: /latest only follows a full release.
       - name: Publish GitHub release
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, '[no-release]') }}
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./packaging/windows/publish-release.ps1 -Installer "${{ steps.build.outputs.installer }}"
+        run: ./packaging/windows/publish-release.ps1 -Installer "${{ steps.build.outputs.installer }}" -Version "${{ github.event.inputs.release }}"
 
       - name: Silent install and smoke test
         if: always() && steps.build.conclusion == 'success'
