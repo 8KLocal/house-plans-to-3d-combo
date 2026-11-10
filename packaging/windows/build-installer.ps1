@@ -147,8 +147,12 @@ if (-not (Test-Path $PyExe)) {
     "PrependPath=0", "CompileAll=0", "TargetDir=$PyDir"
   )
 }
-Invoke-Timed -File $PyExe -Seconds 60 -What "check Python 3.11" -ArgumentList @("-c", "import sys; raise SystemExit(0 if sys.version_info[:2]==(3,11) else 1)")
-Invoke-Timed -File $PyExe -Seconds 60 -What "check tkinter" -ArgumentList @("-c", "import tkinter; print('tkinter', tkinter.TkVersion)")
+$checkPy = Join-Path $Work "check_py.py"
+Set-Content -Path $checkPy -Encoding ascii -Value "import sys`r`nraise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)`r`n"
+$checkTk = Join-Path $Work "check_tk.py"
+Set-Content -Path $checkTk -Encoding ascii -Value "import tkinter`r`nprint('tkinter', tkinter.TkVersion)`r`n"
+Invoke-Timed -File $PyExe -Seconds 60 -What "check Python 3.11" -ArgumentList @($checkPy)
+Invoke-Timed -File $PyExe -Seconds 60 -What "check tkinter" -ArgumentList @($checkTk)
 Say "using $PyExe"
 
 # ---- packages: same lock and CPU index as setup-windows.ps1 ----
