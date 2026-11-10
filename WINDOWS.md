@@ -2,6 +2,19 @@
 
 Runs on your own PC, no chat needed. 64-bit Windows 10 or 11. No admin rights needed.
 
+## Download
+
+https://github.com/8KLocal/house-plans-to-3d-combo/releases/latest/download/House-Plan-3D-Setup.exe
+
+Double-click that file. It installs House Plan 3D for your user only (Python is
+inside the installer) and opens from the **House Plan 3D** Desktop or Start menu
+shortcut. You do not install Python, unzip a folder, or run a setup script.
+
+The file is unsigned. If Windows SmartScreen says "Windows protected your PC",
+click **More info → Run anyway**.
+
+The sections below are the manual setup, for a source checkout instead of the installer.
+
 ## 1. Python 3.11 (one time)
 
 Open a Command Prompt and type `py -3.11 --version`. If it prints `Python 3.11.x`, skip to step 2.
