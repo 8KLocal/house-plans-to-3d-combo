@@ -37,7 +37,7 @@ def _save_mask(path: Path, mask: np.ndarray, colors: dict | None = None) -> None
 
 def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float = 100.0,
         wall_height_in: float = 96.0, skip: set[str] = frozenset(), mm_per_unit: float = 1.0,
-        fixtures: bool = False) -> dict:
+        fixtures: bool = True) -> dict:
     from .raster import file_kind
     if file_kind(plan_path) == "mesh":
         raise ValueError(f"{Path(plan_path).name} is a 3D model, not a plan drawing: use python -m hp3d.ingest "
@@ -100,12 +100,39 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         inv = segment_cubicasa.inventory(rooms, icons)
         ctx["inventory"] = inv
         res = {"inventory": inv}
-        if fixtures and "polys" in ctx:   # opt-in: the icon net often mistakes drawing details for fixtures
-            fx = furniture.from_icon_mask(icons, rooms, plan.rgb)
-            ctx["polys"]["furniture"] = fx
-            (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
-            res["fixtures"] = len(fx)
+        ctx["icons"] = icons
+        ctx["rooms"] = rooms
         return res
+
+    @stage("furniture[symbols]")
+    def _():
+        if not fixtures:
+            return {"placed": 0, "uncertain": [], "detail": "Furniture symbols were skipped."}
+        if "polys" not in ctx:
+            ctx["polys"] = {}
+        icons = ctx.get("icons")
+        if icons is None:
+            icons = np.zeros(plan.rgb.shape[:2], np.uint8)
+        found = furniture.from_icon_mask(icons, ctx.get("rooms"), plan.rgb)
+        placed, uncertain = [], []
+        for piece in found:
+            if piece.get("furn_type"):
+                placed.append(piece)
+            else:
+                uncertain.append({"label": piece.get("label") or "fixture",
+                                  "detail": "This mark is on the plan, but it is not a clear toilet, sink, tub, "
+                                            "stove, bed, table, or other library piece, so it was not placed."})
+        kept = [p for p in ctx["polys"].get("furniture", []) if p.get("added_in_app") or p.get("from_mesh")]
+        ctx["polys"]["furniture"] = kept + placed
+        (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
+        ctx["furniture_uncertain"] = uncertain
+        if uncertain:
+            rep["assumptions"].append(
+                f"{len(uncertain)} fixture mark(s) were unclear, so they were not placed.")
+        if placed:
+            rep["assumptions"].append(
+                f"Placed {len(placed)} piece(s) of furniture that are drawn on the plan. Nothing else was added.")
+        return {"placed": len(placed), "uncertain": [u["label"] for u in uncertain]}
 
     @stage("dimensions[Floorplan-Dimractor]")
     def _():
@@ -135,6 +162,8 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         ctx["detected"] = res["detected"]
         ctx["snap"] = res["snap"]
         (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
+        if res["summary"].get("wall_note"):
+            rep["assumptions"].append(res["summary"]["wall_note"])
         return res["summary"]
 
     @stage("dimensions_ocr[local]")

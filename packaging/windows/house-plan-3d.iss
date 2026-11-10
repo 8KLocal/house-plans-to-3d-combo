@@ -6,8 +6,8 @@
 [Setup]
 AppId={{E7A1C4D2-9B63-4F18-8A05-3C6D1E9F4B27}}
 AppName=House Plan 3D
-AppVersion=0.2.0
-AppVerName=House Plan 3D 0.2.0
+AppVersion=0.2.1
+AppVerName=House Plan 3D 0.2.1
 AppPublisher=8K by AK
 DefaultDirName={localappdata}\House Plan 3D
 DisableProgramGroupPage=yes
@@ -32,9 +32,9 @@ InfoBeforeFile=INSTALL_INFO.txt
 ; Do not let Windows restart it as well: /UPDATE=1 relaunches one copy.
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=0.2.0.0
+VersionInfoVersion=0.2.1.0
 VersionInfoProductName=House Plan 3D
-VersionInfoProductVersion=0.2.0
+VersionInfoProductVersion=0.2.1
 VersionInfoDescription=House Plan 3D setup
 
 ; out\ and any .hp3d project the user saved are not in this list, so an

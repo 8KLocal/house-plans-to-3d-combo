@@ -32,16 +32,47 @@ def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, flo
     return inter / max(aa + bb - inter, 1e-6)
 
 
+def polygon_area(poly: dict) -> float:
+    pts = np.asarray(poly.get("outer") or [], float)
+    if pts.ndim != 2 or len(pts) < 3:
+        return 0.0
+    x, y = pts[:, 0], pts[:, 1]
+    return abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) * 0.5
+
+
+def wall_area(polys) -> float:
+    return sum(polygon_area(p) for p in (polys or []))
+
+
+def choose_walls(segmented, classical, shape: tuple[int, int]) -> tuple[list, str, str | None]:
+    """Keep the segmented walls unless they are empty or a sliver of the drawing.
+
+    A handful of scraps must not hide a real line tracing. The message is for the user.
+    """
+    segmented = list(segmented or [])
+    classical = list(classical or [])
+    plan = float(max(1, int(shape[0]) * int(shape[1])))
+    got, traced = wall_area(segmented), wall_area(classical)
+    tiny = (not segmented) or got < 0.004 * plan or (len(segmented) <= 3 and got < 0.02 * plan)
+    traced_is_real = len(classical) >= 4 and traced >= max(got * 3.0, 0.008 * plan)
+    if tiny and traced_is_real:
+        return classical, "classical-lines", (
+            "The first wall reading was almost empty, so I traced the wall lines on the drawing instead. "
+            "Please check that the walls look right.")
+    if segmented:
+        return segmented, "segmentation", None
+    if classical:
+        return classical, "classical-lines", (
+            "I couldn't read a wall mask, so I traced the wall lines on the drawing instead.")
+    return [], "none", "I couldn't find walls on this plan."
+
+
 def apply(rgb: np.ndarray, polys: dict | None = None) -> dict:
     """Return polygons plus the detection and snap reports. Does not invent missing parts."""
     found = detect(np.asarray(rgb))
     base = {k: list(v) for k, v in (polys or {}).items()}
-    had_walls = bool(base.get("wall"))
-    if not had_walls:
-        base["wall"] = found["walls"]
-        wall_source = "classical-lines"
-    else:
-        wall_source = "segmentation"
+    walls, wall_source, wall_note = choose_walls(base.get("wall"), found["walls"], np.asarray(rgb).shape[:2])
+    base["wall"] = walls
     have = [_box(p) for p in base.get("window", [])]
     added_windows = []
     for win in found["windows"]:
@@ -65,6 +96,8 @@ def apply(rgb: np.ndarray, polys: dict | None = None) -> dict:
     snapped, snap_report = snap_polygons(base)
     summary = {
         "wall_source": wall_source,
+        "wall_note": wall_note,
+        "wall_area_px": round(wall_area(snapped.get("wall", [])), 1),
         "walls": len(snapped.get("wall", [])),
         "windows": len(snapped.get("window", [])),
         "windows_from_symbols": len(added_windows),
