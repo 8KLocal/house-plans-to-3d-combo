@@ -46,7 +46,7 @@ def questions(job: Path, params: E.JobParams, polys: dict | None = None) -> list
     us, meas = set(params.user_set), set(params.measured)
     qs: list[dict] = []
     wpx = _width_px(polys)
-    if "px_per_inch" not in us and wpx:
+    if "px_per_inch" not in us and "px_per_inch" not in meas and wpx:
         now = f"right now it comes out {ft(wpx / params.px_per_inch)} wide" if params.px_per_inch else "right now the size is unknown"
         if mesh:
             g = params.mesh.get("unit_guess")
