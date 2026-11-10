@@ -71,3 +71,29 @@ def inventory(rooms: np.ndarray, icons: np.ndarray, min_frac: float = 0.002) -> 
             if count:
                 out[key][name] = count
     return out
+
+
+FIXTURE_CLASSES = {4: "appliance", 5: "toilet", 6: "sink", 7: "bench", 8: "fireplace", 9: "bathtub"}
+
+
+def fixtures(icons: np.ndarray, min_frac: float = 0.0004, min_px: int = 40) -> list[dict]:
+    """Fixtures/furniture drawn on the plan (toilet, sink, tub, appliance...) as rectangles in pixels.
+
+    Only what the icon net marks on this plan; nothing is added for rooms that
+    usually have furniture. Height is left unspecified (``height_px`` absent),
+    so the build uses the operator's furniture height and the quiz asks for it.
+    Closets are not included: they are storage areas, not blocks.
+    """
+    out = []
+    area = icons.size
+    for cid, name in FIXTURE_CLASSES.items():
+        n, lab, stats, _ = cv2.connectedComponentsWithStats((icons == cid).astype(np.uint8))
+        for i in range(1, n):
+            if stats[i, cv2.CC_STAT_AREA] < max(min_px, min_frac * area):
+                continue
+            ys, xs = np.nonzero(lab == i)
+            rect = cv2.minAreaRect(np.stack([xs, ys], 1).astype(np.float32))
+            box = cv2.boxPoints(rect)
+            out.append({"outer": [[round(float(x), 1), round(float(y), 1)] for x, y in box], "holes": [],
+                        "label": name, "from_plan_icon": True})
+    return out
