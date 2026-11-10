@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 
 from . import WEIGHTS
+from . import furniture
 from .raster import load_plan
 
 COLORS = {0: (240, 240, 235), 1: (40, 40, 45), 2: (230, 120, 50), 3: (60, 150, 220)}  # UNet mask: floor/wall/door/window
@@ -100,7 +101,7 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         ctx["inventory"] = inv
         res = {"inventory": inv}
         if fixtures and "polys" in ctx:   # opt-in: the icon net often mistakes drawing details for fixtures
-            fx = segment_cubicasa.fixtures(icons)
+            fx = furniture.from_icon_mask(icons, rooms, plan.rgb)
             ctx["polys"]["furniture"] = fx
             (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
             res["fixtures"] = len(fx)

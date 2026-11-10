@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import furniture
+
 KINDS = ("wall", "door", "window", "furniture")
 BUILD_SKIP = {"build3d[trimesh]", "repair_export[pymeshfix]"}  # the editor builds 3D itself
 DEFAULTS = {"wall_h": 96.0, "floor_t": 4.0, "sill": 36.0, "lintel": 80.0, "furniture_h": 30.0}
@@ -130,8 +132,9 @@ def list_parts(polys: dict) -> list[dict]:
             if len(pts) == 0:
                 continue
             x0, y0 = pts.min(0); x1, y1 = pts.max(0)
+            title = p.get("label") if p.get("furn_type") else k
             out.append({"kind": k, "index": i, "bbox": [float(x0), float(y0), float(x1), float(y1)],
-                        "label": f"{k} #{i}  {x1 - x0:.0f}x{y1 - y0:.0f}px @ ({x0:.0f},{y0:.0f})"})
+                        "label": f"{title} #{i}  {x1 - x0:.0f}x{y1 - y0:.0f}px @ ({x0:.0f},{y0:.0f})"})
     return out
 
 
@@ -220,8 +223,14 @@ HELP = """Phrases I understand (one per line, or join with 'and' / ';'):
   move selected 12 inches left | move it 10 px down | move selected 1 foot north
   delete selected
   add wall 100,40 to 300,52 | add window x0,y0 to x1,y1 | add door ... (pixels of the cropped plan)
-     (an added door cuts a door-frame opening; add furniture ... adds a simple block)
-  furniture 30 inches   (height of furniture blocks that have no measured height)
+     (an added door cuts a door-frame opening; add furniture ... adds a plain block)
+  add a single bed at 120,80 | add a double bed at 120,80 | add two single beds at 120,80
+  add a table / chair / sofa / desk / kitchen counter / sink / stove / fridge / dishwasher
+  add a toilet / tub / shower / vanity / wardrobe   (at x,y uses a real size and needs a scale;
+     or "add a chair 10,10 to 28,30" in pixels). facing north/south/east/west optional
+  rotate selected 90 degrees | turn selected left | recolor selected red | paint selected #336699
+  resize selected to 39 inches by 75 inches | make selected 24 inches tall
+  furniture 30 inches   (height of plain blocks that have no measured height)
   widen selected 20% | narrow selected 10% | make selected 2x taller
   undo | redo
   rebuild | help
@@ -236,9 +245,9 @@ def parse_command(text: str) -> list[dict]:
     if not clauses:
         raise ValueError("nothing to do - type a phrase (try 'help')")
     for c in clauses:
-        lc = c.lower().strip()
-        lc = re.sub(r"^(?:please\s+)?(?:can you\s+)?", "", lc)
-        lc = re.sub(r"\s+(?:tall|high|thick|deep)$", "", lc)
+        raw = c.lower().strip()
+        raw = re.sub(r"^(?:please\s+)?(?:can you\s+)?", "", raw)
+        lc = re.sub(r"\s+(?:tall|high|thick|deep)$", "", raw)
         if lc in ("help", "?"):
             actions.append({"op": "help"}); continue
         if lc in ("rebuild", "rebuild it", "rebuild the model", "update", "refresh"):
@@ -286,6 +295,10 @@ def parse_command(text: str) -> list[dict]:
                 v, _ = parse_length(m.group(1))
                 actions.append({"op": "set", "param": param, "value": round(v, 3)}); hit = True; break
         if hit:
+            continue
+        furn = furniture.try_parse(raw, parse_length)
+        if furn is not None:
+            actions.append(furn)
             continue
         raise ValueError(f"I didn't understand '{c}'. Nothing was changed. Type 'help' for phrases that work.")
     return actions
@@ -411,6 +424,11 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
     from . import colors as C
     src_cols = (params.mesh or {}).get("source_colors") or {}
     pal = C.palette(src_cols)
+    furn_m = fixed.get("furniture")
+    part_col = furn_m.metadata.get("hp3d_part_color") if furn_m is not None and isinstance(furn_m.metadata, dict) else None
+    if part_col is not None:
+        pal = dict(pal)
+        pal["furniture"] = tuple(int(x) for x in part_col)
     for k, m in fixed.items():
         m.export(job / f"part_{k}.stl")          # STL: geometry only (no colour in the format)
     C.export_glb(fixed, job / "model.glb", pal)
@@ -444,7 +462,8 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
                                       "watertight": {k: bool(m.is_watertight) for k, m in fixed.items()},
                                       "files": files, "logo": logo,
                                       "colors": {k: C.hex_of(C.color_of(k, pal)) for k in C.ordered(fixed)},
-                                      "colors_from_file": sorted(k for k in src_cols if k in fixed)}
+                                      "colors_from_file": sorted(k for k in src_cols if k in fixed
+                                                                and not (k == "furniture" and part_col is not None))}
     rep["scale"] = {"px_per_inch": params.px_per_inch,
                     "source": "user-supplied in app" if "px_per_inch" in params.user_set else
                     (params.scale_source if params.scale_source and params.px_per_inch else None) or
@@ -483,8 +502,9 @@ def render_overlay(job: Path, polys: dict | None = None, selected: tuple | None 
             if len(pts) < 3:
                 continue
             sel = selected == (k, i)
-            c = OVERLAY_COLORS[k]
-            d.polygon(pts, fill=(255, 0, 200, 150) if sel else (*c, 140), outline=(255, 0, 200, 255) if sel else (*c, 255))
+            c = furniture.plan_hex(p, "#{:02x}{:02x}{:02x}".format(*OVERLAY_COLORS[k]))
+            rgb = tuple(int(c[i:i + 2], 16) for i in (1, 3, 5))
+            d.polygon(pts, fill=(255, 0, 200, 150) if sel else (*rgb, 140), outline=(255, 0, 200, 255) if sel else (*rgb, 255))
     out = out or (job / "plan_overlay.png")
     img.save(out)
     return out
@@ -521,6 +541,15 @@ def apply_actions(job: Path, params: JobParams, actions: list[dict], selected: t
             msgs.append(f"{p} set to {v}" + (" px/in" if p == "px_per_inch" else " in"))
             rebuild_needed = True
         else:
+            if a["op"] in furniture.OPS:
+                if a["op"] != "add_furniture" and (selected is None or selected[0] != "furniture"):
+                    raise ValueError(f"'{a['op']}' needs a selected furniture piece - pick one in the Parts list first")
+                polys, selected, msg = furniture.apply_action(polys, selected, a, params.px_per_inch)
+                params.log(msg)
+                msgs.append(msg)
+                changed_polys = True
+                rebuild_needed = True
+                continue
             if selected is None and op != "add":
                 raise ValueError(f"'{op}' needs a selected part - pick one in the Parts list first")
             if op == "move":
