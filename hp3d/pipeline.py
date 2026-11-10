@@ -21,7 +21,7 @@ import numpy as np
 from . import WEIGHTS
 from .raster import load_plan
 
-COLORS = {0: (240, 240, 235), 1: (40, 40, 45), 2: (230, 120, 50), 3: (60, 150, 220)}
+COLORS = {0: (240, 240, 235), 1: (40, 40, 45), 2: (230, 120, 50), 3: (60, 150, 220)}  # UNet mask: floor/wall/door/window
 
 
 def _save_mask(path: Path, mask: np.ndarray, colors: dict | None = None) -> None:
@@ -35,7 +35,12 @@ def _save_mask(path: Path, mask: np.ndarray, colors: dict | None = None) -> None
 
 
 def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float = 100.0,
-        wall_height_in: float = 96.0, skip: set[str] = frozenset()) -> dict:
+        wall_height_in: float = 96.0, skip: set[str] = frozenset(), mm_per_unit: float = 1.0,
+        fixtures: bool = False) -> dict:
+    from .raster import file_kind
+    if file_kind(plan_path) == "mesh":
+        raise ValueError(f"{Path(plan_path).name} is a 3D model, not a plan drawing: use python -m hp3d.ingest "
+                         "(or the app), which slices it instead of running plan detection")
     out.mkdir(parents=True, exist_ok=True)
     rep: dict = {"input": str(plan_path), "stages": {}, "assumptions": []}
 
@@ -93,7 +98,13 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         _save_mask(out / "cubicasa_icons.png", icons)
         inv = segment_cubicasa.inventory(rooms, icons)
         ctx["inventory"] = inv
-        return {"inventory": inv}
+        res = {"inventory": inv}
+        if fixtures and "polys" in ctx:   # opt-in: the icon net often mistakes drawing details for fixtures
+            fx = segment_cubicasa.fixtures(icons)
+            ctx["polys"]["furniture"] = fx
+            (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
+            res["fixtures"] = len(fx)
+        return res
 
     @stage("dimensions[Floorplan-Dimractor]")
     def _():
@@ -132,7 +143,7 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         from . import build3d
         if "polys" not in ctx:
             raise RuntimeError("no polygons (UNet stage failed)")
-        parts = build3d.build(ctx["polys"], 1.0 / ppi, wall_h=wall_height_in)
+        parts = build3d.build(ctx["polys"], 1.0 / ppi, wall_h=wall_height_in, frame_trim=build3d.FRAME_TRIM)
         ctx["parts"] = parts
         import trimesh
         allm = trimesh.util.concatenate(list(parts.values()))
@@ -149,22 +160,38 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         for k, m in ctx["parts"].items():
             before[k] = repair.stats(m)
             fixed[k] = repair.repair(m)
-            after[k] = repair.stats(fixed[k])
-            fixed[k].export(out / f"part_{k}.stl")
-        scene = trimesh.Scene()
+        from . import brand
+        logo = brand.apply_underside_logo(fixed, mm_per_unit=mm_per_unit)  # maker's mark on every build
+        if logo["status"] != "ok":
+            rep["assumptions"].append(f"Underside logo not added: {logo.get('reason')}")
         for k, m in fixed.items():
-            m.visual.face_colors = {"walls": [200, 200, 200, 255], "floor": [150, 110, 80, 255], "windows": [90, 160, 230, 255]}.get(k, [255] * 4)
-            scene.add_geometry(m, node_name=k)
-        scene.export(out / "model.glb")
-        merged = trimesh.util.concatenate(list(fixed.values()))
+            after[k] = repair.stats(m)
+            m.export(out / f"part_{k}.stl")
+        from . import colors as C
+        C.export_glb(fixed, out / "model.glb")
+        from .build3d import merged_for_stl
+        merged = merged_for_stl(fixed)   # STL: one colour, door frames fused back into the walls
         merged.export(out / "model.stl")
         files = ["model.stl", "model.glb"] + [f"part_{k}.stl" for k in fixed]
         try:
-            merged.export(out / "model.3mf")
+            C.export_3mf(fixed, out / "model.3mf", name=out.name)
             files.append("model.3mf")
         except Exception as e:
             rep["assumptions"].append(f"3MF export unavailable: {e}")
-        return {"before": before, "after": after, "files": files}
+        try:
+            from .preview import render
+            render(fixed, out / "preview.png")
+            files.append("preview.png")
+        except Exception as e:  # noqa: BLE001
+            rep["assumptions"].append(f"3D preview failed: {e}")
+        try:
+            from .preview import render_underside
+            render_underside(out / "model.stl", out / "preview_underside.png")
+            files.append("preview_underside.png")
+        except Exception as e:  # noqa: BLE001
+            rep["assumptions"].append(f"underside preview failed: {e}")
+        return {"before": before, "after": after, "files": files, "logo": logo,
+                "colors": {k: C.hex_of(C.color_of(k)) for k in C.ordered(fixed)}}
 
     (out / "report.json").write_text(json.dumps(rep, indent=1, default=str))
     return rep
@@ -177,9 +204,11 @@ def main() -> None:
     ap.add_argument("--px-per-inch", type=float, default=None)
     ap.add_argument("--dpi", type=float, default=100.0, help="PDF rasterisation DPI")
     ap.add_argument("--wall-height-in", type=float, default=96.0)
+    ap.add_argument("--print-mm-per-inch", type=float, default=1.0,
+                    help="printed mm per model inch, used to size the underside logo (default 1.0 = STL read as mm)")
     ap.add_argument("--skip", nargs="*", default=[], help="stage names to skip, e.g. segment_rooms[CubiCasa5k]")
     a = ap.parse_args()
-    rep = run(a.plan, a.out, a.px_per_inch, a.dpi, a.wall_height_in, set(a.skip))
+    rep = run(a.plan, a.out, a.px_per_inch, a.dpi, a.wall_height_in, set(a.skip), a.print_mm_per_inch)
     for k, v in rep["stages"].items():
         print(f"{v['status']:>7}  {k}" + (f"  -> {v.get('error')}" if v["status"] == "error" else ""))
     print("scale:", rep["scale"])
