@@ -46,17 +46,19 @@ jobs:
           path: ${{ steps.build.outputs.installer }}
           if-no-files-found: error
 
-      - name: Silent install and smoke test
-        shell: pwsh
-        run: ./packaging/windows/smoke-install.ps1 -Installer "${{ steps.build.outputs.installer }}"
-
       - name: Reject an installer GitHub cannot host as one file
         shell: pwsh
         run: ./packaging/windows/check-size.ps1 -Installer "${{ steps.build.outputs.installer }}"
 
+      # Publish as soon as the exe exists. A later smoke failure must not block the download.
+      # Not a prerelease: /releases/latest/download/ only follows a non-prerelease release.
       - name: Publish GitHub release
-        if: success() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./packaging/windows/publish-release.ps1 -Installer "${{ steps.build.outputs.installer }}"
+
+      - name: Silent install and smoke test
+        if: always() && steps.build.conclusion == 'success'
+        shell: pwsh
+        run: ./packaging/windows/smoke-install.ps1 -Installer "${{ steps.build.outputs.installer }}"
