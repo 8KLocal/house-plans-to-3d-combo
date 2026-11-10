@@ -51,6 +51,11 @@ class JobParams:
     quiz: dict = field(default_factory=dict)       # question id -> {"answer", "how"} (see hp3d.quiz)
     scale_source: str = ""                         # where a not-user-set scale came from (e.g. "the DXF file's units")
     find_fixtures: bool = False                    # opt-in: fixture blocks from CubiCasa icons (often wrong)
+    levels: list = field(default_factory=list)    # floors above the first: {"plan", "wall_h", "floor_t"}
+    roof: str = "none"                            # "none" | "flat" | "gable" (only what the user asked for)
+    roof_thickness_in: float | None = None
+    roof_rise_in: float | None = None
+    bed_mm: list = field(default_factory=lambda: [256.0, 256.0])
 
     def save(self, job: Path) -> None:
         job.mkdir(parents=True, exist_ok=True)
@@ -223,8 +228,13 @@ HELP = """Phrases I understand (one per line, or join with 'and' / ';'):
      (an added door cuts a door-frame opening; add furniture ... adds a simple block)
   furniture 30 inches   (height of furniture blocks that have no measured height)
   widen selected 20% | narrow selected 10% | make selected 2x taller
+  add floor path/to/upstairs.png     (stacked only from that plan; floor 1 is not copied)
+  clear floors
+  roof flat 4 inches | roof gable rise 4 feet thickness 1 inch | no roof
+  bed 256 x 256 mm | printer bed 220 by 220 mm
   rebuild | help
-Every length needs a unit; a bare number is rejected rather than guessed."""
+Every length needs a unit; a bare number is rejected rather than guessed.
+A roof is not added unless you give its thickness (and, for a gable, its rise)."""
 
 
 def parse_command(text: str) -> list[dict]:
@@ -260,6 +270,40 @@ def parse_command(text: str) -> list[dict]:
             amt, unit = parse_length(m.group(1), allow_px=True)
             dx, dy = _DIRS[m.group(2)]
             actions.append({"op": "move", "dx": dx * amt, "dy": dy * amt, "unit": unit}); continue
+        m = re.match(r"^add\s+floor\s+(.+)$", c.strip(), flags=re.I)
+        if m:
+            plan = m.group(1).strip().strip('"').strip("'")
+            if not plan:
+                raise ValueError(f"'{c}': name the plan file for that floor")
+            actions.append({"op": "add_floor", "plan": plan}); continue
+        if lc in ("clear floors", "remove floors", "no extra floors"):
+            actions.append({"op": "clear_floors"}); continue
+        if lc in ("no roof", "remove roof", "delete roof"):
+            actions.append({"op": "roof", "style": "none"}); continue
+        m = re.match(r"^roof\s+flat\s+(.+)$", lc)
+        if m:
+            thick, _ = parse_length(m.group(1))
+            if thick <= 0:
+                raise ValueError(f"'{c}': roof thickness must be more than 0")
+            actions.append({"op": "roof", "style": "flat", "thickness": thick}); continue
+        if re.match(r"^roof\s+flat$", lc):
+            raise ValueError("flat roof needs a thickness, e.g. 'roof flat 4 inches'. No roof was added.")
+        m = re.match(r"^roof\s+gable\s+rise\s+(.+?)\s+thickness\s+(.+)$", lc)
+        if m:
+            rise, _ = parse_length(m.group(1))
+            thick, _ = parse_length(m.group(2))
+            if rise <= 0 or thick <= 0:
+                raise ValueError(f"'{c}': gable rise and thickness must be more than 0")
+            actions.append({"op": "roof", "style": "gable", "rise": rise, "thickness": thick}); continue
+        if re.match(r"^roof\s+gable\b", lc):
+            raise ValueError("gable roof needs a rise and a thickness, e.g. "
+                             "'roof gable rise 4 feet thickness 1 inch'. No roof was added.")
+        m = re.match(r"^(?:printer\s+)?bed\s+(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)\s*mm$", lc)
+        if m:
+            bx, by = float(m.group(1)), float(m.group(2))
+            if bx <= 0 or by <= 0:
+                raise ValueError(f"'{c}': bed size must be more than 0 mm")
+            actions.append({"op": "bed", "x": bx, "y": by}); continue
         m = re.match(r"^add\s+(?:a\s+|an\s+)?(wall|window|door|furniture)\s+(?:from\s+|at\s+)?" + _NUM + r"\s*,\s*" + _NUM +
                      r"\s+(?:to|-)\s+" + _NUM + r"\s*,\s*" + _NUM + r"(?:\s*px)?$", lc)
         if m:
@@ -380,8 +424,18 @@ def assumptions(params: JobParams) -> list[str]:
             a.append(f"Question '{qid}' was skipped; the value shown for it is still a guess.")
     if params.crop_source.startswith("auto"):
         a.append(f"Crop {params.crop} was auto-detected from the green outline; check it covers the unit's exterior walls.")
-    a.append("Open-top model (no roof/ceiling). Doors are openings, not solid parts; the wall right around "
-             "each doorway is the orange door-frame part. Colours are in model.3mf / model.glb (STL has none).")
+    if params.roof == "none":
+        a.append("Open-top model (no roof/ceiling). Doors are openings, not solid parts; the wall right around "
+                 "each doorway is the orange door-frame part. Colours are in model.3mf / model.glb (STL has none).")
+    elif params.roof == "flat" and params.roof_thickness_in:
+        a.append(f"Flat roof {params.roof_thickness_in:g} in thick, no overhang, only the thickness you set. "
+                 "Doors are openings, not solid parts. Colours are in model.3mf / model.glb (STL has none).")
+    elif params.roof == "gable" and params.roof_thickness_in and params.roof_rise_in:
+        a.append(f"Simple gable, eaves {params.roof_thickness_in:g} in and rise {params.roof_rise_in:g} in. "
+                 "No overhang or trusses. Doors are openings, not solid parts. Colours are in model.3mf / model.glb (STL has none).")
+    else:
+        a.append("A roof was requested without the size it needs, so none was built. "
+                 "Doors are openings, not solid parts. Colours are in model.3mf / model.glb (STL has none).")
     return a
 
 
@@ -403,6 +457,16 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
     from . import brand
     logo = brand.apply_underside_logo(fixed, mm_per_unit=params.print_mm_per_unit)
     log(f"underside logo: {logo['status']} " + (f"{logo['variant']} {logo['width_mm']} mm" if logo["status"] == "ok" else logo.get("reason", "")))
+    from .floors import integrate, stl_mesh
+    from .bedsplit import write_bed
+    stacked = integrate(job, params, fixed, logo)
+    if stacked["changed"]:
+        fixed = stacked["parts"]
+        if isinstance(stacked.get("logo"), dict):
+            logo = stacked["logo"]
+    else:
+        stl_mesh = None  # single floor keeps build3d.merged_for_stl
+    floor_notes = stacked["assumptions"]
     for old in job.glob("part_*.stl"):
         old.unlink()
     from . import colors as C
@@ -412,7 +476,7 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
         m.export(job / f"part_{k}.stl")          # STL: geometry only (no colour in the format)
     C.export_glb(fixed, job / "model.glb", pal)
     from .build3d import merged_for_stl
-    merged = merged_for_stl(fixed)   # STL: one colour, door frames fused back into the walls
+    merged = stl_mesh(fixed) if stl_mesh else merged_for_stl(fixed)   # STL: door frames fused back into the walls
     merged.export(job / "model.stl")
     files = ["model.stl", "model.glb"] + [f"part_{k}.stl" for k in fixed]
     try:
@@ -452,9 +516,21 @@ def rebuild(job: Path, params: JobParams, log=print) -> dict:
     rep["source_kind"] = params.source_kind
     rep["crop"] = {"box_px": params.crop, "source": params.crop_source}
     rep["polygon_counts"] = counts(polys)
-    rep["assumptions"] = assumptions(params)
+    rep["assumptions"] = assumptions(params) + floor_notes
     if logo["status"] != "ok":
         rep["assumptions"].append(f"Underside logo not added: {logo.get('reason')}")
+    try:
+        bed = write_bed(fixed, job / "bed", params.bed_mm, params.print_mm_per_unit)
+        rep["bed"] = {k: v for k, v in bed.items() if k != "pieces"}
+        rep["bed"]["pieces"] = [{k: v for k, v in p.items() if k != "parts"} for p in bed.get("pieces", [])]
+        files.extend(bed.get("files") or [])
+        for note in bed.get("assumptions") or []:
+            if note not in rep["assumptions"]:
+                rep["assumptions"].append(note)
+        log(bed["assumptions"][0] if bed.get("assumptions") else "bed split skipped")
+    except Exception as e:  # noqa: BLE001
+        log(f"bed split failed: {e}")
+        rep["assumptions"].append(f"Printer-bed split failed: {e}")
     rep["in_app_edits"] = params.edits
     from . import quiz
     rep["review"] = quiz.review(job, params, polys)
@@ -501,6 +577,35 @@ def apply_actions(job: Path, params: JobParams, actions: list[dict], selected: t
             rebuild_needed = True
         elif op == "undo":
             msgs.append("undo: use the Undo button (it restores the previous polygons/params).")
+        elif op == "roof":
+            params.roof = a["style"]
+            params.roof_thickness_in = a.get("thickness")
+            params.roof_rise_in = a.get("rise")
+            if a["style"] == "none":
+                params.roof_thickness_in = None
+                params.roof_rise_in = None
+            params.log(f"roof {params.roof} thickness={params.roof_thickness_in} rise={params.roof_rise_in}")
+            msgs.append("roof removed" if params.roof == "none" else
+                        f"roof set to {params.roof}"
+                        + (f", {params.roof_thickness_in:g} in thick" if params.roof_thickness_in else "")
+                        + (f", rise {params.roof_rise_in:g} in" if params.roof_rise_in else ""))
+            rebuild_needed = True
+        elif op == "bed":
+            params.bed_mm = [float(a["x"]), float(a["y"])]
+            params.log(f"bed {params.bed_mm[0]:g} x {params.bed_mm[1]:g} mm")
+            msgs.append(f"printer bed set to {a['x']:g} x {a['y']:g} mm")
+            rebuild_needed = True
+        elif op == "add_floor":
+            params.levels.append({"plan": a["plan"], "wall_h": None, "floor_t": None})
+            params.log(f"added floor {a['plan']}")
+            msgs.append(f"floor {len(params.levels) + 1} will be read from {a['plan']}. "
+                        "Nothing is copied up from floor 1.")
+            rebuild_needed = True
+        elif op == "clear_floors":
+            params.levels = []
+            params.log("cleared extra floors")
+            msgs.append("extra floors removed")
+            rebuild_needed = True
         elif op == "set":
             p, v = a["param"], a["value"]
             trial = {k: getattr(params, k) for k in ("wall_h", "floor_t", "sill", "lintel")}

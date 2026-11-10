@@ -200,7 +200,8 @@ class App(tk.Tk):
         e.pack(side="left", fill="x", expand=True)
         e.bind("<Return>", lambda _: self.say())
         ttk.Button(sf, text="Change it", command=self.say).pack(side="left", padx=(6, 0))
-        ttk.Label(L, text='e.g. "make the walls 9 feet", "delete selected",\n"move selected 1 foot left"',
+        ttk.Label(L, text='e.g. "make the walls 9 feet", "delete selected",\n'
+                          '"add floor upstairs.png", "roof flat 6 inches", "bed 256 x 256 mm"',
                   style="Hint.TLabel").grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
 
         wf = ttk.Frame(L); wf.grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 3), sticky="we"); r += 1
