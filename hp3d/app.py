@@ -2,13 +2,16 @@
 
     ./open-app.sh            (or: .venv/bin/python -m hp3d.app)
 
-Main screen = three plain steps (pick a file, build, change it), plus a short
-one-question-at-a-time check after each build. The file can be a picture, a PDF
-blueprint or a 3D model (STL/OBJ/PLY/3MF/GLB); unreadable types are refused with
-a plain message. Everything
-technical (exact scale, PDF quality, crop numbers, window heights, part list)
-lives under "More options", which starts closed. Technical details of every run
-go to out/<project>/app_log.txt and report.json, not the main screen.
+Main screen = four plain steps (pick a file, build, change it, quote), plus a
+short one-question-at-a-time check after each build. The file can be a picture,
+a PDF blueprint or a 3D model (STL/OBJ/PLY/3MF/GLB); unreadable types are refused
+with a plain message. Undo and Redo cover each change. Save project writes a
+.hp3d file you can open later. The quote PDF shows the top and 3/4 views, the
+measured size, a filament and print-time estimate, and a price from the filament
+$/kg, hourly rate, and markup you type.
+Everything technical (exact scale, PDF quality, crop numbers, window heights,
+part list) lives under "More options", which starts closed. Technical details
+of every run go to out/<project>/app_log.txt and report.json, not the main screen.
 
 Private testing tool: bundled parts have non-commercial / unlicensed / GPL terms,
 so it is not sellable as-is. See README.md and INTEGRATION.md.
@@ -17,13 +20,16 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import queue
+import tempfile
 import threading
 import time
 import tkinter as tk
 import tkinter.font as tkfont
 import traceback
 from pathlib import Path
+from typing import Literal, Never
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
@@ -31,11 +37,16 @@ from PIL import Image, ImageTk
 
 from . import ROOT
 from . import editor as E
+from . import preview
+from . import projectfile
 from . import quiz as Q
+from . import quote
+from .colors import PART_COLORS, PART_LABELS, PART_ORDER, PLAN_HEX, hex_of, palette
+from .errors import friendly
+from .history import EditHistory, only_history_ops
 from .raster import OPEN_PATTERNS, UnsupportedFile, file_kind
 
 OUT = ROOT / "out"
-from .colors import PLAN_HEX  # noqa: E402
 COL = dict(PLAN_HEX)   # plan legend; the 3D preview uses the same hues (hp3d.colors)
 PINK = "#ff00c8"
 NAMES = {"wall_h": "Wall height", "floor_t": "Floor thickness", "sill": "Window bottom",
@@ -90,7 +101,7 @@ class Scrollable(ttk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("House plans to 3D")
+        self.title("House Plan 3D")
         self.geometry("1400x900")
         for f in ("TkDefaultFont", "TkTextFont", "TkMenuFont"):
             tkfont.nametofont(f).configure(size=11)
@@ -109,8 +120,18 @@ class App(tk.Tk):
         self.polys: dict = {k: [] for k in E.KINDS}
         self.parts: list[dict] = []
         self.selected: tuple | None = None
-        self.undo_stack: list = []
+        self.history = EditHistory()
         self.mode = "select"
+        self._cam = dict(preview.HOME_VIEW)
+        self._view_live = False
+        self._view_im = None
+        self._view_busy = False
+        self._view_dirty = False
+        self._view_want_quality = False
+        self._view_err_told = False
+        self._preview_parts = None
+        self._preview_pal = None
+        self._view_xy = None
         self.crop_source = "none"
         self._measure_pts: list = []
         self._drag = None
@@ -141,6 +162,7 @@ class App(tk.Tk):
         self.v_answer = tk.StringVar()
         self.v_crop = [tk.StringVar() for _ in range(4)]
         self.v_say = tk.StringVar()
+        self.v_filament, self.v_hourly, self.v_markup = tk.StringVar(), tk.StringVar(), tk.StringVar()
         self.v_step, self.v_unit = tk.StringVar(value="6"), tk.StringVar(value="in")
         self.v_pct = tk.StringVar(value="10")
         self.v_kind = tk.StringVar(value="wall")
@@ -148,6 +170,11 @@ class App(tk.Tk):
         self.v_adj = {k: tk.StringVar() for k in ("floor_t", "sill", "lintel")}
 
         r = 0
+        ttk.Label(L, text="House Plan 3D", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="w"); r += 1
+        ttk.Label(L, text="AK Local Solutions  ·  8K by AK", style="Hint.TLabel").grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
+        ff = ttk.Frame(L); ff.grid(row=r, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w"); r += 1
+        ttk.Button(ff, text="Save project", command=self.save_project_file).pack(side="left")
+        ttk.Button(ff, text="Open project", command=self.open_project_file).pack(side="left", padx=6)
         # ---- Step 1
         ttk.Label(L, text="1.  Pick a file", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(10, 2), sticky="w"); r += 1
         ttk.Button(L, text="Choose a file (picture, PDF or 3D model)...", command=self.browse).grid(row=r, column=0, columnspan=2, **pad); r += 1
@@ -219,6 +246,17 @@ class App(tk.Tk):
         bf = ttk.Frame(L); bf.grid(row=r, column=0, columnspan=2, **pad); r += 1
         ttk.Button(bf, text="Delete selected", command=self.delete).pack(side="left", fill="x", expand=True)
         ttk.Button(bf, text="Undo", command=self.undo).pack(side="left", fill="x", expand=True, padx=(6, 0))
+        ttk.Button(bf, text="Redo", command=self.redo).pack(side="left", fill="x", expand=True, padx=(6, 0))
+
+        # ---- Step 4 quote
+        ttk.Label(L, text="4.  Customer quote", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(14, 2), sticky="w"); r += 1
+        ttk.Label(L, text="Your prices, in USD. Markup is a percent. These stay blank until you type them.",
+                  style="Hint.TLabel", wraplength=390).grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
+        box = ttk.Frame(L); box.grid(row=r, column=0, columnspan=2, **pad); r += 1
+        for i, (lab, var) in enumerate((("Filament $/kg", self.v_filament), ("Shop $/hour", self.v_hourly), ("Markup %", self.v_markup))):
+            ttk.Label(box, text=lab).grid(row=0, column=i, sticky="w", padx=(0, 8))
+            ttk.Entry(box, textvariable=var, width=8).grid(row=1, column=i, sticky="w", padx=(0, 8), pady=(2, 0))
+        ttk.Button(L, text="Save quote PDF...", style="Big.TButton", command=self.save_quote).grid(row=r, column=0, columnspan=2, **pad); r += 1
 
         # ---- What happened
         ttk.Label(L, text="What happened", style="Step.TLabel").grid(row=r, column=0, columnspan=2, padx=10, pady=(14, 2), sticky="w"); r += 1
@@ -236,7 +274,12 @@ class App(tk.Tk):
         # ---- right: plan + 3D side by side
         right.columnconfigure(0, weight=1); right.columnconfigure(1, weight=1); right.rowconfigure(1, weight=1)
         ttk.Label(right, text="Your plan", style="Step.TLabel").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 2))
-        ttk.Label(right, text="3D model", style="Step.TLabel").grid(row=0, column=1, sticky="w", padx=8, pady=(8, 2))
+        head3 = ttk.Frame(right)
+        head3.grid(row=0, column=1, sticky="we", padx=8, pady=(8, 2))
+        ttk.Label(head3, text="3D model", style="Step.TLabel").pack(side="left")
+        ttk.Button(head3, text="Reset", command=lambda: self._set_named_view("home")).pack(side="right")
+        ttk.Button(head3, text="3/4", command=lambda: self._set_named_view("three_quarter")).pack(side="right", padx=4)
+        ttk.Button(head3, text="Top", command=lambda: self._set_named_view("top")).pack(side="right")
         self.cv = tk.Canvas(right, background="#ffffff", highlightthickness=1, highlightbackground="#ccc")
         self.cv.grid(row=1, column=0, sticky="nsew", padx=(8, 4))
         self.cv3 = tk.Canvas(right, background="#ffffff", highlightthickness=1, highlightbackground="#ccc")
@@ -244,12 +287,30 @@ class App(tk.Tk):
         self.l_plan_hint = ttk.Label(right, text="", style="Hint.TLabel", wraplength=480)
         self.l_plan_hint.grid(row=2, column=0, sticky="w", padx=8, pady=(2, 8))
         self.l_files = ttk.Label(right, text="", style="Hint.TLabel", wraplength=480)
-        self.l_files.grid(row=2, column=1, sticky="w", padx=8, pady=(2, 8))
+        self.l_files.grid(row=2, column=1, sticky="w", padx=8, pady=(2, 2))
+        leg = ttk.Frame(right)
+        leg.grid(row=3, column=1, sticky="w", padx=8, pady=(0, 8))
+        for key in PART_ORDER:
+            tk.Label(leg, text="  ", background=hex_of(PART_COLORS[key]), relief="solid", borderwidth=1).pack(side="left")
+            ttk.Label(leg, text=PART_LABELS[key]).pack(side="left", padx=(3, 8))
+        ttk.Label(leg, text="Drag to turn, scroll to zoom.", style="Hint.TLabel").pack(side="left", padx=(4, 0))
         for c in (self.cv, self.cv3):
             c.bind("<Configure>", lambda _: self.redraw())
         self.cv.bind("<ButtonPress-1>", self.on_press)
         self.cv.bind("<B1-Motion>", self.on_drag)
         self.cv.bind("<ButtonRelease-1>", self.on_release)
+        self.cv3.bind("<ButtonPress-1>", self._view_press)
+        self.cv3.bind("<B1-Motion>", self._view_drag)
+        self.cv3.bind("<ButtonRelease-1>", self._view_release)
+        self.cv3.bind("<MouseWheel>", self._view_wheel)
+        self.cv3.bind("<Button-4>", self._view_wheel)
+        self.cv3.bind("<Button-5>", self._view_wheel)
+        self.bind_all("<Control-z>", self._key_undo)
+        self.bind_all("<Control-Z>", self._key_undo)
+        self.bind_all("<Control-y>", self._key_redo)
+        self.bind_all("<Control-Y>", self._key_redo)
+        self.bind_all("<Control-Shift-Z>", self._key_redo)
+        self.bind_all("<Control-Shift-z>", self._key_redo)
         self.tell("Hi! Start with step 1: choose a plan file.")
 
     def _build_more(self, f):
@@ -344,6 +405,21 @@ class App(tk.Tk):
                     self.busy = False
                     self.b_run.state(["!disabled"])
                     val()
+                elif kind == "alert":
+                    messagebox.showwarning("That didn't work", val)
+                elif kind == "view":
+                    self._view_im = val
+                    self._view_err_told = False
+                    self._draw_3d()
+                elif kind == "view_err":
+                    self.log(val)
+                    if not self._view_err_told:
+                        self._view_err_told = True
+                        self.tell("I couldn't update the 3D view. The last picture is still showing.")
+                elif kind == "view_done":
+                    self._view_busy = False
+                    if self._view_dirty and self._preview_parts and not self.busy:
+                        self._kick_view()
         except queue.Empty:
             pass
         self.after(100, self._pump)
@@ -363,7 +439,9 @@ class App(tk.Tk):
                 fn()
             except Exception as e:  # noqa: BLE001
                 self.log(f"ERROR: {e}\n{traceback.format_exc()}")
-                self.tell(f"Something went wrong: {e}  (details in {self.job().name}/app_log.txt)")
+                msg = friendly(e)
+                self.tell(msg)
+                self.q.put(("alert", msg))
             self.q.put(("done", then or (lambda: None)))
         threading.Thread(target=work, daemon=True).start()
 
@@ -382,8 +460,26 @@ class App(tk.Tk):
         return v
 
     def _err(self, e):
-        self.tell(f"Not changed: {e}")
-        messagebox.showwarning("Not changed", str(e))
+        msg = friendly(e) if isinstance(e, BaseException) else str(e)
+        self.tell(msg)
+        messagebox.showwarning("That didn't work", msg)
+
+    def _capture(self) -> str:
+        return json.dumps({"polys": self.polys, "params": E.asdict(self.params)}, sort_keys=True)
+
+    def _restore(self, blob: str) -> None:
+        data = json.loads(blob)
+        self.polys = data["polys"]
+        fields = E.JobParams.__dataclass_fields__
+        self.params = E.JobParams(**{k: v for k, v in data["params"].items() if k in fields})
+        job = self.job()
+        E.save_polys(job, self.polys)
+        self.params.save(job)
+        self.selected = None
+
+    def _remember(self, before: str | None) -> None:
+        if before is not None:
+            self.history.snapshot(before)
 
     def built(self) -> bool:
         job = self.job()
@@ -401,10 +497,6 @@ class App(tk.Tk):
         if m == "crop":
             self._force_original = True
         self.redraw()
-
-    def snapshot(self):
-        self.undo_stack.append((json.dumps(self.polys), json.dumps(E.asdict(self.params))))
-        self.undo_stack = self.undo_stack[-50:]
 
     def _update_size_label(self):
         ppi = self.params.px_per_inch if self.built() else None
@@ -447,6 +539,14 @@ class App(tk.Tk):
         self.params = E.JobParams()
         self.polys = {k: [] for k in E.KINDS}
         self.selected = None
+        self.history = EditHistory()
+        self._view_live = False
+        self._view_im = None
+        self._preview_parts = None
+        self._cam = dict(preview.HOME_VIEW)
+        self.v_filament.set("")
+        self.v_hourly.set("")
+        self.v_markup.set("")
         self.clear_crop(quiet=True)
         self.l_plan.configure(text=f"{'3D model' if kind == 'mesh' else 'Plan'}: {Path(p).name}")
         self._green = None
@@ -519,18 +619,145 @@ class App(tk.Tk):
             self.v_job.set(Path(d).name); job = self.job()
             if not (job / "job.json").exists():
                 return self._err(f"{job.name} isn't a project made by this app")
-        self.params = E.JobParams.load(job)
+        self._show_job(f"Opened the earlier project \"{job.name}\".")
+
+    def save_project_file(self):
+        if self.busy:
+            return messagebox.showinfo("One moment", "I'm still updating the model.")
+        if not self.built():
+            return self._err("Build the model first, then save the project.")
+        try:
+            self._store_rates()
+        except ValueError as e:
+            return self._err(e)
+        E.save_polys(self.job(), self.polys)
+        self.params.save(self.job())
+        path = filedialog.asksaveasfilename(
+            defaultextension=".hp3d",
+            filetypes=[("House Plan 3D project", "*.hp3d")],
+            initialfile=f"{self.job().name}.hp3d",
+        )
+        if not path:
+            return
+        try:
+            dest = projectfile.save_project(self.job(), Path(path))
+        except (ValueError, OSError) as e:
+            return self._err(e)
+        self.tell(f"Saved the project to {dest.name}. Open it later with Open project.")
+
+    def open_project_file(self):
+        if self.busy:
+            return messagebox.showinfo("One moment", "I'm still updating the model.")
+        path = filedialog.askopenfilename(
+            filetypes=[("House Plan 3D project", "*.hp3d"), ("All files", "*.*")])
+        if not path:
+            return
+        src = Path(path)
+        previous = self.v_job.get()
+        self.v_job.set(src.stem)
+        try:
+            projectfile.load_project(src, self.job())
+        except (ValueError, OSError) as e:
+            self.v_job.set(previous)
+            return self._err(e)
+        self._show_job(f"Opened {src.name}.")
+
+    def _show_job(self, announce: str):
+        job = self.job()
+        try:
+            params = E.JobParams.load(job)
+            polys = E.load_polys(job)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+            return self._err(e)
+        self.history = EditHistory()
+        self._view_live = False
+        self._view_im = None
+        self._cam = dict(preview.HOME_VIEW)
+        self.params = params
+        self.polys = polys
         self.kind = "mesh" if self.params.source_kind == "mesh" else "plan"
         self.v_plan.set(self.params.plan)
-        self.l_plan.configure(text=f"{'3D model' if self.kind == 'mesh' else 'Plan'}: {Path(self.params.plan).name}")
+        self.l_plan.configure(text=f"{'3D model' if self.kind == 'mesh' else 'Plan'}: {Path(self.params.plan).name}"
+                              if self.params.plan else "Opened project.")
         self.v_ppi.set(f"{self.params.px_per_inch:g}" if self.params.px_per_inch and "px_per_inch" in self.params.user_set else "")
         self.v_wall_ft.set(f"{self.params.wall_h / 12:g}")
         for v, x in zip(self.v_crop, self.params.crop or ["", "", "", ""]):
             v.set(str(x))
         self.crop_source = self.params.crop_source
-        self.polys = E.load_polys(job)
+        self._fill_rates()
+        self.selected = None
         self.after_build(announce=False)
-        self.tell(f"Opened the earlier project \"{job.name}\".")
+        self.tell(announce)
+
+    def _typed_number(self, var, label, example) -> float:
+        s = var.get().strip().replace("$", "").replace(",", "").rstrip("%").strip()
+        if not s:
+            raise ValueError(f"Type the {label}. For example, {example}.")
+        try:
+            value = float(s)
+        except ValueError:
+            raise ValueError(f"The {label} needs to be a number, such as {example}.") from None
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"The {label} has to be zero or more.")
+        return value
+
+    def _rates(self) -> quote.Rates:
+        return quote.Rates(
+            filament_usd_per_kg=self._typed_number(self.v_filament, "filament price per kg", "22.50"),
+            hourly_usd=self._typed_number(self.v_hourly, "hourly rate", "35"),
+            markup_percent=self._typed_number(self.v_markup, "markup percent", "0"),
+        )
+
+    def _store_rates(self) -> None:
+        fields = (self.v_filament, self.v_hourly, self.v_markup)
+        path = self.job() / "quote_rates.json"
+        if not any(v.get().strip() for v in fields):
+            if path.is_file():
+                path.unlink()
+            return
+        quote.write_rates(self.job(), self._rates())
+
+    def _fill_rates(self) -> None:
+        rates = quote.read_rates(self.job())
+        if rates is None:
+            self.v_filament.set("")
+            self.v_hourly.set("")
+            self.v_markup.set("")
+            return
+        self.v_filament.set(f"{rates.filament_usd_per_kg:g}")
+        self.v_hourly.set(f"{rates.hourly_usd:g}")
+        self.v_markup.set(f"{rates.markup_percent:g}")
+
+    def save_quote(self):
+        if self.busy:
+            return messagebox.showinfo("One moment", "I'm still updating the model.")
+        if not self.built():
+            return self._err("Build the model first (step 2), then make the quote.")
+        try:
+            rates = self._rates()
+            reason = quote.size_block_reason(self.params)
+            if reason:
+                raise ValueError(reason)
+        except ValueError as e:
+            return self._err(e)
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF quote", "*.pdf")],
+            initialfile=f"{self.job().name}-quote.pdf",
+        )
+        if not path:
+            return
+        try:
+            quote.write_rates(self.job(), rates)
+        except OSError as e:
+            return self._err(e)
+        dest = Path(path)
+
+        def work():
+            built = quote.build_quote(self.job(), self.params, rates, dest)
+            self.tell(f"Saved the customer quote. Total {quote.format_usd(built.total_usd)}. File: {dest.name}")
+        self.tell("Writing the customer quote...")
+        self._bg(work)
 
     def run_detect(self):
         try:
@@ -569,6 +796,7 @@ class App(tk.Tk):
         if wall_h != E.DEFAULTS["wall_h"] and not was_measured:
             p.user_set.append("wall_h")
         p.log(f"run requested: plan={Path(plan).name}, ppi={ppi}, wall_h={wall_h}, crop={crop}")
+        before = self._capture() if self.built() else None
         self.params = p
         self.selected = None
         self._force_original = False
@@ -583,6 +811,7 @@ class App(tk.Tk):
                 self.log("plan and crop unchanged - reusing saved polygons")
             E.rebuild(job, p, log=self.log)
             self.polys = E.load_polys(job)
+            self._remember(before)
         self._bg(work, then=self.after_build)
 
     # ------------------------------------------------------------ edits
@@ -622,6 +851,9 @@ class App(tk.Tk):
                     n = len(self.polys.get("wall", []))
                     self.tell(f"I found {n} wall pieces. If walls are missing, use \"Add a wall\" and drag where it goes.")
             self.show_quiz(announce)
+        self._cache_preview()
+        if self._view_live:
+            self._schedule_view(quality=True)
         self.redraw()
 
     # ------------------------------------------------------------ quick questions
@@ -662,13 +894,13 @@ class App(tk.Tk):
         if self.busy:
             return messagebox.showinfo("One moment", "I'm still updating the model.")
         text = self.v_answer.get() if text is None else text
-        self.snapshot()
+        before = self._capture()
         try:
             msg, need = Q.answer(self.job(), self.params, q["id"], text, self.selected)
         except ValueError as e:
-            self.undo_stack.pop()
-            self.tell(f"Sorry - {e}")
+            self.tell(f"Sorry - {friendly(e)}")
             return
+        self._remember(before)
         self.log(f"quiz {q['id']}: '{text}' -> {msg}")
         self.tell(f"You said: {text}. {msg}")
         self.polys = E.load_polys(self.job())
@@ -681,7 +913,9 @@ class App(tk.Tk):
         q = self._q
         if q is None or self.busy:
             return
+        before = self._capture()
         self.tell(Q.skip(self.job(), self.params, q["id"]))
+        self._remember(before)
         self.rebuild(quiet=True)
 
     def refresh_parts(self):
@@ -721,12 +955,12 @@ class App(tk.Tk):
         job = self.job()
         if not self.built():
             return self._err("build the model first (step 2)")
-        self.snapshot()
+        before = self._capture()
         try:
             msgs, need, self.selected = E.apply_actions(job, self.params, actions, self.selected)
         except ValueError as e:
-            self.undo_stack.pop()
             return self._err(e)
+        self._remember(before)
         for m, a in zip(msgs, actions):
             self.log("edit: " + m)
             if "\n" not in m:
@@ -775,11 +1009,12 @@ class App(tk.Tk):
         trial.update({a["param"]: a["value"] for a in acts})
         if not (trial["wall_h"] > 0 and trial["floor_t"] > 0 and 0 <= trial["sill"] < trial["lintel"] <= trial["wall_h"]):
             return self._err("window bottom must be below window top, and window top no higher than the walls")
-        self.snapshot()
+        before = self._capture()
         for a in acts:
             self.params.set(a["param"], a["value"])
             self.tell(self._plain("", a))
         self.params.save(self.job())
+        self._remember(before)
         self.rebuild()
 
     def move(self, d):
@@ -820,11 +1055,17 @@ class App(tk.Tk):
         text = self.v_say.get()
         try:
             acts = E.parse_command(text)
+            hist = only_history_ops(acts)
         except ValueError as e:
-            self.tell(f"Sorry - {e}")
+            self.tell(f"Sorry - {friendly(e)}")
             return
-        if any(a["op"] == "undo" for a in acts):
-            return self.undo()
+        if hist is not None:
+            for op in hist:
+                if op == "undo":
+                    self.undo()
+                else:
+                    self.redo()
+            return
         if [a["op"] for a in acts] == ["help"]:
             messagebox.showinfo("Phrases", E.HELP); return
         self.log(f"say: '{text}' -> {acts}")
@@ -832,15 +1073,31 @@ class App(tk.Tk):
         self._edit(acts)
 
     def undo(self):
-        if not self.undo_stack:
-            return self._err("nothing to undo")
-        polys, params = self.undo_stack.pop()
-        self.polys = json.loads(polys)
-        self.params = E.JobParams(**json.loads(params))
-        self.params.log("undo")
-        E.save_polys(self.job(), self.polys)
-        self.params.save(self.job())
-        self.tell("Undid the last change.")
+        self._step_history("undo")
+
+    def redo(self):
+        self._step_history("redo")
+
+    def _step_history(self, which: Literal["undo", "redo"]):
+        if self.busy:
+            return messagebox.showinfo("One moment", "I'm still updating the model.")
+        if which == "undo":
+            told = "Undid the last change."
+            if not self.history.can_undo():
+                return self._err("Nothing to undo.")
+        elif which == "redo":
+            told = "Put the last change back."
+            if not self.history.can_redo():
+                return self._err("Nothing to redo.")
+        else:
+            _never: Never = which
+            raise AssertionError(_never)
+        if not self.built():
+            return self._err("Build the model first.")
+        current = self._capture()
+        restored = self.history.undo(current) if which == "undo" else self.history.redo(current)
+        self._restore(restored)
+        self.tell(told)
         self.rebuild()
 
     def reset_polys(self):
@@ -849,10 +1106,11 @@ class App(tk.Tk):
             return self._err("nothing has been built yet")
         if not messagebox.askyesno("Start over?", "Throw away all your part changes and go back to what was found on the plan?"):
             return
-        self.snapshot()
+        before = self._capture()
         self.polys = json.loads((job / "polygons_detected.json").read_text())
         E.save_polys(job, self.polys)
         self.params.log("reset polygons to detected")
+        self._remember(before)
         self.selected = None
         self.rebuild()
 
@@ -895,14 +1153,132 @@ class App(tk.Tk):
     def _draw_3d(self):
         cv = self.cv3
         cv.delete("all")
-        p = self.job() / "preview.png"
-        if not self.built() or not p.exists():
-            cv.create_text(20, 20, anchor="nw", fill="#777", text="Your 3D model will show here\nafter step 2.")
-            return
-        im = Image.open(p)
+        if self._view_live and self._view_im is not None:
+            im = self._view_im
+        else:
+            p = self.job() / "preview.png"
+            if not self.built() or not p.exists():
+                cv.create_text(20, 20, anchor="nw", fill="#777",
+                               text="Your 3D model will show here\nafter step 2.\nDrag to turn it. Scroll to zoom.")
+                return
+            im = Image.open(p)
         s = self._fit(cv, *im.size)
         self._imgs["pv"] = ImageTk.PhotoImage(im.resize((max(1, int(im.width * s)), max(1, int(im.height * s)))))
         cv.create_image(0, 0, anchor="nw", image=self._imgs["pv"])
+
+    def _cache_preview(self):
+        self._preview_parts = None
+        mesh = self.params.mesh or {}
+        self._preview_pal = palette(mesh.get("source_colors"))
+        glb = self.job() / "model.glb"
+        if not glb.is_file():
+            return
+        try:
+            parts = {k: m for k, m in preview._load_parts(glb).items() if len(getattr(m, "faces", []))}
+        except Exception as e:  # noqa: BLE001
+            self.log(f"3D view couldn't read the model: {e}")
+            return
+        self._preview_parts = parts or None
+
+    def _set_named_view(self, name: str):
+        view = preview.VIEWS[name]
+        self._cam = {"azim": view["azim"], "elev": view["elev"], "zoom": view["zoom"]}
+        if name == "home":
+            self._view_live = False
+            self._view_im = None
+            self.redraw()
+            return
+        self._schedule_view(quality=True)
+
+    def _schedule_view(self, quality: bool):
+        if not self._preview_parts or self.busy:
+            return
+        self._view_live = True
+        if quality:
+            self._view_want_quality = True
+        if self._view_busy:
+            self._view_dirty = True
+            return
+        self._kick_view()
+
+    def _kick_view(self):
+        self._view_busy = True
+        self._view_dirty = False
+        quality = self._view_want_quality
+        self._view_want_quality = False
+        cam = dict(self._cam)
+        parts = self._preview_parts
+        pal = self._preview_pal
+        w = max(240, min(900, self.cv3.winfo_width() or 640))
+        h = max(200, min(800, self.cv3.winfo_height() or 480))
+
+        def work():
+            name = None
+            try:
+                if quality:
+                    fd, name = tempfile.mkstemp(suffix=".png")
+                    os.close(fd)
+                    im = preview.render(
+                        parts, Path(name), pal, size=(w, h),
+                        elev=cam["elev"], azim=cam["azim"], zoom=cam["zoom"], legend=True, ss=1,
+                    )
+                else:
+                    im = preview.render_painter(
+                        parts, None, pal, size=(w, h),
+                        elev=cam["elev"], azim=cam["azim"], zoom=cam["zoom"], legend=True,
+                    )
+                self.q.put(("view", im))
+            except Exception as e:  # noqa: BLE001
+                self.q.put(("view_err", f"{e}\n{traceback.format_exc()}"))
+            finally:
+                if name:
+                    Path(name).unlink(missing_ok=True)
+                self.q.put(("view_done", None))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _typing(self, ev) -> bool:
+        return ev.widget.winfo_class() in ("Entry", "TEntry", "Text", "TCombobox")
+
+    def _key_undo(self, ev):
+        if self._typing(ev):
+            return
+        self.undo()
+        return "break"
+
+    def _key_redo(self, ev):
+        if self._typing(ev):
+            return
+        self.redo()
+        return "break"
+
+    def _view_press(self, ev):
+        self._view_xy = (ev.x, ev.y)
+
+    def _view_drag(self, ev):
+        if not self._view_xy or not self._preview_parts or self.busy:
+            return
+        dx, dy = ev.x - self._view_xy[0], ev.y - self._view_xy[1]
+        self._view_xy = (ev.x, ev.y)
+        if dx == 0 and dy == 0:
+            return
+        self._cam["azim"] = self._cam["azim"] - dx * 0.5
+        self._cam["elev"] = max(-5.0, min(89.0, self._cam["elev"] + dy * 0.4))
+        self._schedule_view(quality=False)
+
+    def _view_release(self, _ev):
+        self._view_xy = None
+        if self._view_live:
+            self._schedule_view(quality=True)
+
+    def _view_wheel(self, ev):
+        if not self._preview_parts or self.busy:
+            return
+        direction = 1 if (getattr(ev, "num", 0) == 4 or getattr(ev, "delta", 0) > 0) else -1
+        factor = 1.1 if direction > 0 else 1 / 1.1
+        self._cam["zoom"] = min(8.0, max(0.3, self._cam["zoom"] * factor))
+        self._schedule_view(quality=False)
+        return "break"
 
     def _draw_plan(self):
         cv = self.cv
