@@ -72,6 +72,35 @@ def test_label_scale_lands_in_job_json_and_skips_the_size_question(tmp_path):
     assert "size" in [q["id"] for q in quiz.questions(job, unknown, polys)]
 
 
+def test_real_quote_pdf_shows_a_price_for_a_label_scale(tmp_path, monkeypatch):
+    """PR #4 prices a job only when the size is a real measurement. Labels count."""
+    from hp3d import quote
+    from hp3d.quote import Rates
+    monkeypatch.setattr(quote, "brand_logo_png", lambda: None)
+    params = E.JobParams(plan="plan.png", px_per_inch=4.0, scale_source=MEASURED_SOURCE,
+                         measured=["px_per_inch"], print_mm_per_unit=1.0)
+    assert quote.size_block_reason(params) is None
+    job = tmp_path / "cottage"
+    job.mkdir()
+    floor = trimesh.creation.box(extents=(12, 10, 1))
+    floor.apply_translation((0, 0, 0.5))
+    wall = trimesh.creation.box(extents=(12, 1, 8))
+    wall.apply_translation((0, 4.5, 5))
+    scene = trimesh.Scene()
+    scene.add_geometry(floor, node_name="floor", geom_name="floor")
+    scene.add_geometry(wall, node_name="walls", geom_name="walls")
+    scene.export(job / "model.glb")
+    params.save(job)
+    pdf = tmp_path / "quote.pdf"
+    built = quote.build_quote(job, params, Rates(20.0, 10.0, 10.0), pdf)
+    assert built.total_usd > 0
+    raw = pdf.read_bytes().decode("latin-1", errors="ignore")
+    assert "dimension labels" in raw
+    guessed = E.JobParams(px_per_inch=1.0, scale_source="estimated from the plan", print_mm_per_unit=1.0)
+    with pytest.raises(ValueError, match="estimate"):
+        quote.build_quote(job, guessed, Rates(20.0, 10.0, 10.0), tmp_path / "no.pdf")
+
+
 def test_quote_prices_a_label_scale_and_still_blocks_a_guess():
     mod = types.SimpleNamespace()
 
