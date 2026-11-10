@@ -21,6 +21,8 @@ import trimesh
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+from .stairs import stair_meshes
+
 FRAME_TRIM = 4.0   # inches of wall either side of / around a doorway drawn as the door frame
 
 
@@ -52,7 +54,12 @@ def build(polys: dict, inches_per_px: float, wall_h: float = 96.0, floor_t: floa
     if not cuts.is_empty:
         walls = walls.difference(cuts)
     wins = unary_union([g for p in polys.get("window", []) if (g := _poly(p, s))])
-    all_geom = unary_union([walls, wins])  # doors excluded: stray 'door' blobs (e.g. captions) would inflate the slab
+    # Floor still covers the openings. The wall itself loses the window footprint so the
+    # sill and head (extruded below) are a cut-out, not a solid wall with a picture on it.
+    pieces = [g for g in (walls, wins) if g is not None and not g.is_empty]
+    all_geom = unary_union(pieces) if pieces else walls
+    if not wins.is_empty and not walls.is_empty:
+        walls = walls.difference(wins).buffer(0)
     if not (wall_h > 0 and floor_t > 0 and 0 <= sill < lintel <= wall_h):
         raise ValueError(f"need wall_h>0, floor_t>0 and 0 <= sill < lintel <= wall_h (got wall_h={wall_h}, "
                          f"floor_t={floor_t}, sill={sill}, lintel={lintel})")
@@ -86,6 +93,12 @@ def build(polys: dict, inches_per_px: float, wall_h: float = 96.0, floor_t: floa
     if furn:
         parts["furniture"] = furn
         all_geom = unary_union([all_geom] + [g for p in polys.get("furniture", []) if (g := _poly(p, s))])
+    stair_parts = stair_meshes(polys.get("stair") or [], s, floor_t, wall_h)
+    if stair_parts:
+        parts["stairs"] = stair_parts
+        stair_foot = unary_union([g for p in polys.get("stair", []) if (g := _poly(p, s))])
+        if not stair_foot.is_empty:
+            all_geom = unary_union([all_geom, stair_foot])
     # Floor slab: convex-ish footprint = bounding hull of all structure.
     # A footprint read from a 3D file ("floor" polygons) is used as-is; otherwise the hull of the structure.
     fl = unary_union([g for p in polys.get("floor", []) if (g := _poly(p, s))])

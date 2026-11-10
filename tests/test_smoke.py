@@ -70,5 +70,8 @@ def test_full_pipeline_png_has_no_dimension_stage(tmp_path: Path):
     from hp3d.pipeline import run
     rep = run(SAMPLE_PNG, tmp_path, skip={"segment_rooms[CubiCasa5k]"})
     assert rep["stages"]["dimensions[Floorplan-Dimractor]"]["status"] == "error"  # raster: no text layer
-    assert rep["scale"]["px_per_inch"] is None
+    assert rep["stages"]["dimensions_ocr[local]"]["status"] == "ok"
+    # A scale is set only when several dimension labels agree. Otherwise it stays unknown.
+    if rep["scale"]["px_per_inch"] is not None:
+        assert rep["scale"]["measured"] is True
     assert (tmp_path / "model.stl").exists()

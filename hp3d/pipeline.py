@@ -110,7 +110,7 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
     def _():
         from . import dimensions
         if not plan.is_pdf:
-            raise ValueError("Dimractor reads vector PDF text only; raster input has no text layer (OCR not wired)")
+            raise ValueError("Dimractor reads vector PDF text only; a picture or scan is read by dimensions_ocr[local]")
         d = dimensions.extract(plan.path)
         page = d["pages"][plan.page]
         (out / "dimensions.json").write_text(json.dumps(page, indent=1))
@@ -126,11 +126,53 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
             res["scale_estimate"] = sc
         return res
 
+    @stage("structure[openings]")
+    def _():
+        from .structure import apply
+        res = apply(plan.rgb, ctx.get("polys"))
+        ctx["polys"] = res["polys"]
+        ctx["detected"] = res["detected"]
+        ctx["snap"] = res["snap"]
+        (out / "polygons.json").write_text(json.dumps(ctx["polys"]))
+        return res["summary"]
+
+    @stage("dimensions_ocr[local]")
+    def _():
+        from .ocr_dims import MEASURED_SOURCE, scale_from_image
+        result = scale_from_image(plan.rgb)
+        if result.get("measured"):
+            new = float(result["px_per_inch"])
+            prev = ctx.get("auto_ppi")
+            if prev and abs(prev - new) / new > 0.10:
+                # The PDF text layer already produced a scale. A disagreeing OCR
+                # reading must not throw that away or replace it with a guess.
+                result = dict(result)
+                result["measured"] = False
+                result["scale_status"] = "uncertain"
+                result["detail"] = ("Dimension labels and the PDF text layer disagree, so the size was not "
+                                    "marked as measured.")
+            else:
+                ctx["auto_ppi"] = prev or new
+                ctx["scale_source"] = MEASURED_SOURCE
+                result = dict(result)
+                result["scale_status"] = "measured"
+        else:
+            result = dict(result)
+            result["scale_status"] = result.get("status")
+        ctx["ocr_scale"] = result
+        keep = ("scale_status", "px_per_inch", "engine", "detail", "measured", "relative_spread", "source")
+        return {k: result.get(k) for k in keep}
+
     ppi = px_per_inch or ctx.get("auto_ppi")
+    ocr_scale = ctx.get("ocr_scale") or {}
     if px_per_inch:
-        rep["scale"] = {"px_per_inch": px_per_inch, "source": "user-supplied"}
+        rep["scale"] = {"px_per_inch": px_per_inch, "source": "user-supplied", "measured": False}
+    elif ocr_scale.get("measured") and ppi:
+        rep["scale"] = {"px_per_inch": ppi, "source": ocr_scale.get("source"), "measured": True,
+                        "engine": ocr_scale.get("engine")}
+        rep["assumptions"].append("Scale read from agreeing dimension labels on the plan.")
     elif ppi:
-        rep["scale"] = {"px_per_inch": ppi, "source": "estimated from printed room dimensions"}
+        rep["scale"] = {"px_per_inch": ppi, "source": "estimated from printed room dimensions", "measured": False}
         rep["assumptions"].append("Scale estimated from room labels; verify one known wall before printing.")
     else:
         ppi = 1.0
@@ -193,6 +235,9 @@ def run(plan_path: Path, out: Path, px_per_inch: float | None = None, dpi: float
         return {"before": before, "after": after, "files": files, "logo": logo,
                 "colors": {k: C.hex_of(C.color_of(k)) for k in C.ordered(fixed)}}
 
+    from .confidence import build_report
+    rep["confidence"] = build_report(ctx.get("polys"), ctx.get("detected"), ctx.get("snap"), ctx.get("ocr_scale"),
+                                     rep.get("scale"), wall_height_in, 36.0, 80.0)
     (out / "report.json").write_text(json.dumps(rep, indent=1, default=str))
     return rep
 
