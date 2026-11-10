@@ -30,7 +30,9 @@ from tkinter.scrolledtext import ScrolledText
 from PIL import Image, ImageTk
 
 from . import ROOT
+from . import __version__
 from . import editor as E
+from . import update as updates
 from . import quiz as Q
 from .raster import OPEN_PATTERNS, UnsupportedFile, file_kind
 
@@ -90,7 +92,7 @@ class Scrollable(ttk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("House plans to 3D")
+        self.title(f"House plans to 3D  {__version__}")
         self.geometry("1400x900")
         for f in ("TkDefaultFont", "TkTextFont", "TkMenuFont"):
             tkfont.nametofont(f).configure(size=11)
@@ -117,8 +119,13 @@ class App(tk.Tk):
         self._imgs: dict = {}
         self._scale = 1.0
         self.kind = "plan"
+        self._settings = updates.load_settings()
+        self.v_autoupdate = tk.BooleanVar(value=bool(self._settings.get("auto_check_updates", True)))
+        self._update_busy = False
         self._build_ui()
         self.after(100, self._pump)
+        if self.v_autoupdate.get():
+            self.after(500, lambda: self.check_updates(manual=False))
 
     # ------------------------------------------------------------ UI
     def _build_ui(self):
@@ -309,6 +316,11 @@ class App(tk.Tk):
         ttk.Button(of, text="Rebuild 3D", command=self.rebuild).pack(side="left")
         ttk.Button(of, text="Go back to what was found", command=self.reset_polys).pack(side="left", padx=4)
         ttk.Button(of, text="All phrases", command=lambda: messagebox.showinfo("Phrases", E.HELP)).pack(side="left")
+        ttk.Label(f, text="Updates", font=self.f_sub).grid(row=r, column=0, columnspan=4, padx=4, pady=(8, 2), sticky="w"); r += 1
+        uf = ttk.Frame(f); uf.grid(row=r, column=0, columnspan=4, **pad); r += 1
+        ttk.Checkbutton(uf, text="Auto-check for updates", variable=self.v_autoupdate,
+                        command=self.save_update_setting).pack(side="left")
+        ttk.Button(uf, text="Check for updates", command=lambda: self.check_updates(manual=True)).pack(side="left", padx=8)
         self.l_assume = ttk.Label(f, text="", style="Hint.TLabel", wraplength=400, justify="left")
         self.l_assume.grid(row=r, column=0, columnspan=4, padx=4, pady=6, sticky="w"); r += 1
 
@@ -327,6 +339,68 @@ class App(tk.Tk):
     def log(self, s: str):
         """Technical detail: goes to out/<project>/app_log.txt, not the main screen."""
         self.q.put(("log", s))
+
+    def save_update_setting(self):
+        self._settings["auto_check_updates"] = bool(self.v_autoupdate.get())
+        try:
+            updates.save_settings(self._settings)
+        except OSError as e:
+            self.tell(f"Couldn't save the update setting: {e}")
+
+    def check_updates(self, manual: bool = False):
+        """Background check. Startup failures stay quiet; the button explains them."""
+        if self._update_busy:
+            return
+        self._update_busy = True
+
+        def work():
+            result = updates.check_latest()
+
+            def done():
+                self._update_busy = False
+                try:
+                    self._show_update_result(result, manual)
+                except tk.TclError:
+                    pass
+
+            try:
+                self.after(0, done)
+            except tk.TclError:
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_update_result(self, result: dict, manual: bool):
+        if result.get("status") == "newer":
+            if messagebox.askyesno("House Plan 3D", "A new version is ready. Update now?"):
+                self._start_update()
+            return
+        if not manual:
+            return
+        if result.get("status") == "current":
+            messagebox.showinfo("House Plan 3D", f"You already have the latest version ({result.get('local')}).")
+        else:
+            messagebox.showinfo("House Plan 3D", "Couldn't check for updates. You can keep working.")
+
+    def _start_update(self):
+        self.tell("Downloading the update. House Plan 3D will close when it starts installing.")
+
+        def work():
+            try:
+                dest = updates.download_installer(updates.installer_destination())
+                updates.launch_update(dest)
+            except Exception as e:  # noqa: BLE001
+                try:
+                    self.after(0, lambda: self.tell(f"The update didn't download ({e}). You can keep working."))
+                except tk.TclError:
+                    pass
+                return
+            try:
+                self.after(0, self.destroy)
+            except tk.TclError:
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _pump(self):
         try:

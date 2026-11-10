@@ -7,6 +7,9 @@ stage instead of breaking the whole app.
 """
 from pathlib import Path
 
+# Matches the GitHub release tag (v0.2.0). The update check compares against this.
+__version__ = "0.2.0"
+
 ROOT = Path(__file__).resolve().parent.parent
 THIRD_PARTY = ROOT / "third_party"
 WEIGHTS = ROOT / "weights"
