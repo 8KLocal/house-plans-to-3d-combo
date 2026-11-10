@@ -31,11 +31,12 @@ from PIL import Image, ImageTk
 
 from . import ROOT
 from . import editor as E
+from . import furniture as furn_mod
 from . import quiz as Q
+from .colors import PLAN_HEX
 from .raster import OPEN_PATTERNS, UnsupportedFile, file_kind
 
 OUT = ROOT / "out"
-from .colors import PLAN_HEX  # noqa: E402
 COL = dict(PLAN_HEX)   # plan legend; the 3D preview uses the same hues (hp3d.colors)
 PINK = "#ff00c8"
 NAMES = {"wall_h": "Wall height", "floor_t": "Floor thickness", "sill": "Window bottom",
@@ -200,7 +201,7 @@ class App(tk.Tk):
         e.pack(side="left", fill="x", expand=True)
         e.bind("<Return>", lambda _: self.say())
         ttk.Button(sf, text="Change it", command=self.say).pack(side="left", padx=(6, 0))
-        ttk.Label(L, text='e.g. "make the walls 9 feet", "delete selected",\n"move selected 1 foot left"',
+        ttk.Label(L, text='e.g. "make the walls 9 feet", "add a single bed at 120, 80",\n"recolor selected red", "turn selected left"',
                   style="Hint.TLabel").grid(row=r, column=0, columnspan=2, padx=10, sticky="w"); r += 1
 
         wf = ttk.Frame(L); wf.grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 3), sticky="we"); r += 1
@@ -711,7 +712,8 @@ class App(tk.Tk):
                 return "Changed the size (scale)."
             return f"{NAMES.get(a['param'], a['param'])} is now {feet_text(a['value'])}."
         for w, t in (("moved", "Moved the selected part."), ("deleted", "Deleted the selected part."),
-                     ("added", "Added it."), ("resized", "Resized the selected part.")):
+                     ("added", "Added it."), ("resized", "Resized the selected part."),
+                     ("rotated", "Rotated the selected part."), ("recolored", "Recolored the selected part.")):
             if m.startswith(w):
                 return t
         return m
@@ -944,7 +946,8 @@ class App(tk.Tk):
                     if len(pts) < 6:
                         continue
                     sel = self.selected == (k, i)
-                    cv.create_polygon(pts, fill=PINK if sel else COL[k], outline=PINK if sel else COL[k],
+                    fill = PINK if sel else (furn_mod.plan_hex(p, COL[k]) if k == "furniture" else COL[k])
+                    cv.create_polygon(pts, fill=fill, outline=PINK if sel else fill,
                                       width=3 if sel else 1, stipple="" if sel else "gray50", tags=("part", f"{k}:{i}"))
             self.l_plan_hint.configure(text="Dark = walls   Blue = windows   Orange = door frames   Green = furniture   Pink = selected.  Click a part to select it.")
         for (x, y) in self._measure_pts:

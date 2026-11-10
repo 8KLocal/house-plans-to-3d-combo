@@ -54,6 +54,7 @@ jobs:
       # Publish as soon as the exe exists. A later smoke failure must not block the download.
       # Not a prerelease: /releases/latest/download/ only follows a non-prerelease release.
       - name: Publish GitHub release
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, '[no-release]') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

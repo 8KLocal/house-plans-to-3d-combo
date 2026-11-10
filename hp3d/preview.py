@@ -79,9 +79,14 @@ def render(src, png: Path, pal: dict | None = None, size: tuple[int, int] = (900
         base = np.array(color_of(k, pal)[:3], float)
         n = m.face_normals
         front = n @ view < -1e-6
+        front_i = np.flatnonzero(front)
         tri = to_px(proj(m.triangles[front]))
         shade = 0.62 + 0.38 * np.clip(n[front] @ light, 0, 1)
-        cols = np.clip(base[None, :] * shade[:, None], 0, 255)
+        if isinstance(m.metadata, dict) and m.metadata.get("hp3d_use_face_colors"):
+            fc = np.asarray(m.visual.face_colors)[front_i][:, :3].astype(float)
+            cols = np.clip(fc * shade[:, None], 0, 255)
+        else:
+            cols = np.clip(base[None, :] * shade[:, None], 0, 255)
         for t, c in zip(tri, cols):
             x0, y0 = np.floor(t[:, :2].min(0)).astype(int)
             x1, y1 = np.ceil(t[:, :2].max(0)).astype(int)
