@@ -1,0 +1,9 @@
+House Plan 3D installs for the current Windows user. It does not need an administrator password.
+
+The setup adds a Desktop shortcut and a Start menu shortcut, both named House Plan 3D. They open the app with no command-prompt window.
+
+This installer is not signed. If Windows SmartScreen says "Windows protected your PC", choose More info, then Run anyway.
+
+Python, the libraries, Cairo, sample plans, and the detection weights are included. You do not install Python yourself.
+
+The bundled projects are fine for your own testing. They are not cleanly licensed for sale (GPL, AGPL PyMuPDF, CubiCasa CC BY-NC, and an unlicensed component). See WINDOWS.md in the install folder.

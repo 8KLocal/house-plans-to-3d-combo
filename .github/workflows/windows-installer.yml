@@ -1,0 +1,66 @@
+name: Windows installer
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_CACHE_DIR: C:\hp3d-pip-cache
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: C:\hp3d-pip-cache
+          key: ${{ runner.os }}-pip-py311-${{ hashFiles('requirements.lock.txt') }}
+
+      - name: Build installer
+        id: build
+        timeout-minutes: 45
+        shell: pwsh
+        run: ./packaging/windows/build-installer.ps1
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: House-Plan-3D-Setup
+          path: ${{ steps.build.outputs.installer }}
+          if-no-files-found: error
+
+      - name: Reject an installer GitHub cannot host as one file
+        shell: pwsh
+        run: ./packaging/windows/check-size.ps1 -Installer "${{ steps.build.outputs.installer }}"
+
+      # Publish as soon as the exe exists. A later smoke failure must not block the download.
+      # Not a prerelease: /releases/latest/download/ only follows a non-prerelease release.
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./packaging/windows/publish-release.ps1 -Installer "${{ steps.build.outputs.installer }}"
+
+      - name: Silent install and smoke test
+        if: always() && steps.build.conclusion == 'success'
+        timeout-minutes: 25
+        shell: pwsh
+        run: ./packaging/windows/smoke-install.ps1 -Installer "${{ steps.build.outputs.installer }}"

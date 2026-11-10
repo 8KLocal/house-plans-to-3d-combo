@@ -1,8 +1,19 @@
-# house-plans-to-3d-combo (local, unpublished)
+# house-plans-to-3d-combo
 
 A test bed that installs five open-source projects side by side in **one Python
 environment** and wires them into a single pipeline, to find out whether they can
 serve as the foundation of a "house plans → 3D model" app.
+
+## Download (Windows)
+
+One file. No Python install, no unzipping, no setup script:
+
+https://github.com/8KLocal/house-plans-to-3d-combo/releases/latest/download/House-Plan-3D-Setup.exe
+
+Double-click `House-Plan-3D-Setup.exe`. It installs for the current user (no
+administrator password) and adds a **House Plan 3D** shortcut on the Desktop and
+in the Start menu. The installer is unsigned; if SmartScreen appears, choose
+**More info → Run anyway**. Details are in [WINDOWS.md](WINDOWS.md).
 
 ```
 plan PDF / image
@@ -38,7 +49,7 @@ INTEGRATION.md        what was tested, what broke, verdict
 
 ## Setup (Linux/macOS, CPU only)
 
-On Windows, see [WINDOWS.md](WINDOWS.md): `setup-windows.bat` once, then `open-app.bat`.
+On Windows, use the installer above. From a source checkout, see [WINDOWS.md](WINDOWS.md): `setup-windows.bat` once, then `open-app.bat`.
 
 Needs `git`, [`uv`](https://docs.astral.sh/uv/), and the system Cairo library
 (`apt install libcairo2` / `brew install cairo`).
@@ -100,7 +111,8 @@ CubiCasa5k, and has an unlicensed component. That is fine for testing on your ow
 machine. It is **not** cleanly sellable as-is. See INTEGRATION.md for a
 commercial-safe swap list.
 
-This repo is local only: no remote is configured and nothing has been pushed.
+The public repo is https://github.com/8KLocal/house-plans-to-3d-combo.
+Detection weights are not in git; `./setup.sh` downloads them, and the Windows installer bundles them.
 
 ## Desktop app with in-app model editor (Linux box)
 

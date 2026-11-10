@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 vendor/cairo/
+dist/
+House-Plan-3D-Setup.exe
+packaging/windows/build-defines.iss
