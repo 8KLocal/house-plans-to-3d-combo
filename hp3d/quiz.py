@@ -77,8 +77,9 @@ def questions(job: Path, params: E.JobParams, polys: dict | None = None) -> list
         names = sorted({p.get("label", "fixture") for p in plan_furn})
         qs.append({"id": "fixtures", "kind": "yesno", "default": "yes",
                    "text": f"I found {len(plan_furn)} fixture(s) drawn on the plan ({', '.join(names)}).\n"
-                           "Keep them as simple blocks in the model?"})
-    if any(not p.get("height_px") for p in polys.get("furniture", [])) and "furniture_h" not in us:
+                           "Keep them in the model?"})
+    if any(not p.get("height_px") and not p.get("furn_type") and not p.get("height_in")
+           for p in polys.get("furniture", [])) and "furniture_h" not in us:
         qs.append({"id": "furniture_h", "kind": "length", "default": ft(params.furniture_h),
                    "text": f"How tall should the furniture blocks be?\nThe plan doesn't say; I'm using {ft(params.furniture_h)}."})
     nd = len(polys.get("door", []))

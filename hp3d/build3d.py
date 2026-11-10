@@ -5,8 +5,11 @@ Open-top style: floor slab + full-height walls; door openings are left as gaps
 lintel so the opening is visible. Door polygons marked ``cut`` (added in the
 app or read from a 3D file) are also cut out of the walls, so a door frame
 opening always exists where a door is listed. Furniture polygons (only those
-on the plan or in the 3D file) become simple blocks standing on the floor:
-``height_px`` (measured, pixel units) wins, otherwise ``furniture_h``.
+on the plan or in the 3D file) stand on the floor. A polygon with
+``furn_type`` becomes that parametric piece (``hp3d.furniture``); any other
+furniture polygon stays a simple block. ``height_in`` (set in the editor)
+wins, then ``height_px`` (measured, pixel units), otherwise the catalog
+height or ``furniture_h``.
 
 ``frame_trim`` > 0 (the app and pipeline use ``FRAME_TRIM`` inches) splits the
 wall material within that distance of each door opening, plus any header above
@@ -21,6 +24,7 @@ import trimesh
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+from . import furniture
 from .stairs import stair_meshes
 
 FRAME_TRIM = 4.0   # inches of wall either side of / around a doorway drawn as the door frame
@@ -84,12 +88,28 @@ def build(polys: dict, inches_per_px: float, wall_h: float = 96.0, floor_t: floa
     furn = []
     for p in polys.get("furniture", []):
         g = _poly(p, s)
+        bodies = furniture.bodies_for(p, s, wall_h, furniture_h) if p.get("furn_type") else []
+        if bodies:
+            col = furniture.explicit_color(p)
+            for b in bodies:
+                b.apply_translation((0, 0, floor_t))
+                b.metadata["hp3d_color"] = col
+                furn.append(b)
+            continue
         if g is None:
             continue
-        h = p["height_px"] * s if p.get("height_px") else furniture_h
+        if p.get("height_in"):
+            h = float(p["height_in"])
+        elif p.get("height_px"):
+            h = p["height_px"] * s
+        else:
+            h = furniture_h
         h = min(float(h), wall_h)
         if h > 0:
-            furn += _extrude(g, h, floor_t)
+            col = furniture.explicit_color(p)
+            for b in _extrude(g, h, floor_t):
+                b.metadata["hp3d_color"] = col
+                furn.append(b)
     if furn:
         parts["furniture"] = furn
         all_geom = unary_union([all_geom] + [g for p in polys.get("furniture", []) if (g := _poly(p, s))])
@@ -104,12 +124,31 @@ def build(polys: dict, inches_per_px: float, wall_h: float = 96.0, floor_t: floa
     fl = unary_union([g for p in polys.get("floor", []) if (g := _poly(p, s))])
     slab = unary_union([fl, all_geom]).buffer(0) if not fl.is_empty else all_geom.convex_hull
     parts["floor"] = _extrude(slab, floor_t, 0.0) if not all_geom.is_empty else []
-    meshes = {k: trimesh.util.concatenate(v) for k, v in parts.items() if v}
+    meshes = {}
+    flip = np.diag([1.0, -1.0, 1.0, 1.0])
     # Flip Y (image rows grow downward) so the model is not mirrored.
-    for m in meshes.values():
-        m.apply_transform(np.diag([1, -1, 1, 1]))
-        # trimesh.apply_transform already re-winds faces for a mirroring matrix,
-        # so normals stay outward (an extra invert() here turned parts inside-out).
+    # trimesh.apply_transform already re-winds faces for a mirroring matrix,
+    # so normals stay outward (an extra invert() here turned parts inside-out).
+    for k, v in parts.items():
+        if not v:
+            continue
+        for m in v:
+            m.apply_transform(flip)
+        mesh = trimesh.util.concatenate(v)
+        if k == "furniture":
+            colors = [m.metadata.get("hp3d_color") if isinstance(m.metadata, dict) else None for m in v]
+            if any(c is not None for c in colors):
+                painted = [c if c is not None else furniture.DEFAULT_RGBA for c in colors]
+                if len(set(painted)) == 1:
+                    mesh.metadata["hp3d_part_color"] = painted[0]
+                else:
+                    for m, c in zip(v, painted):
+                        m.visual.face_colors = c
+                    mesh = trimesh.util.concatenate(v)
+                    mesh.metadata["hp3d_use_face_colors"] = True
+                    mesh.metadata["hp3d_pieces"] = v
+                    mesh.metadata["hp3d_piece_colors"] = painted
+        meshes[k] = mesh
     return meshes
 
 
