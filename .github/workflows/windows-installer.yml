@@ -2,8 +2,14 @@ name: Windows installer
 
 on:
   pull_request:
+    paths-ignore:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
   push:
     branches: [master]
+    paths-ignore:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
     inputs:
       release:
@@ -24,6 +30,9 @@ env:
 
 jobs:
   installer:
+    # Site publishes are marked [no-release] and must not start this Windows build.
+    # A release is still published only by workflow_dispatch with a version.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[no-release]')) || (github.event_name == 'pull_request' && !contains(github.event.pull_request.title, '[no-release]') && !contains(github.event.pull_request.body, '[no-release]')) }}
     runs-on: windows-latest
     timeout-minutes: 180
     steps:

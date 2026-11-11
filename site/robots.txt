@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://8klocal.github.io/house-plans-to-3d-combo/sitemap.xml
