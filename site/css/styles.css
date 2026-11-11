@@ -349,6 +349,62 @@ button.button {
   padding: 0.2rem 0.4rem 0.5rem;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.compare-wrap {
+  overflow-x: auto;
+}
+
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.compare th,
+.compare td {
+  padding: 0.85rem 0.9rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.compare thead th {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.compare tbody th {
+  color: var(--navy);
+}
+
+.compare tr.is-us {
+  background: #fff;
+  box-shadow: inset 4px 0 0 var(--coral);
+}
+
+.compare a {
+  font-weight: 700;
+}
+
+.compare-note {
+  margin-top: 0.8rem;
+}
+
 .section {
   padding: 2.6rem 0;
 }
@@ -866,6 +922,61 @@ textarea {
 
   .header-tools {
     margin-left: 0.4rem;
+  }
+}
+
+@media (max-width: 719px) {
+  .compare,
+  .compare tbody,
+  .compare tr,
+  .compare td,
+  .compare tbody th {
+    display: block;
+    width: auto;
+  }
+
+  .compare {
+    background: transparent;
+    border: 0;
+  }
+
+  .compare thead {
+    display: none;
+  }
+
+  .compare tr {
+    margin-bottom: 0.75rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .compare tr.is-us {
+    border-top: 3px solid var(--coral);
+    box-shadow: none;
+  }
+
+  .compare tbody th,
+  .compare td {
+    border-bottom: 0;
+    padding: 0.45rem 0.9rem;
+  }
+
+  .compare tbody th {
+    padding-top: 0.85rem;
+  }
+
+  .compare td {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .compare td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--navy);
   }
 }
 
