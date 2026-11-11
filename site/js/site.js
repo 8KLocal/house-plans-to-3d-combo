@@ -104,38 +104,39 @@
     }
   });
 
-  var form = document.querySelector("[data-quote-form]");
+  var form = document.querySelector("[data-order-form]");
   if (!form) {
     return;
   }
 
-  var delivery = form.querySelector('[name="Delivery"]');
-  var zip = form.querySelector('[name="ZIP"]');
-  var packageField = form.querySelector('[name="Package"]');
+  var pickup = form.querySelector("#pickup");
+  var address = document.getElementById("ship-address");
+  var addressInputs = form.querySelectorAll("[data-address]");
+  var packageRadios = form.querySelectorAll('input[name="Package"]');
 
-  function syncZip() {
-    if (!delivery || !zip) {
-      return;
+  function syncAddress() {
+    var shipping = !(pickup && pickup.checked);
+    if (address) {
+      address.hidden = !shipping;
     }
-    var needsZip = delivery.value.indexOf("UPS") !== -1;
-    zip.required = needsZip;
+    Array.prototype.forEach.call(addressInputs, function (input) {
+      input.required = shipping;
+    });
   }
 
-  if (delivery) {
-    delivery.addEventListener("change", syncZip);
-    syncZip();
+  if (pickup) {
+    pickup.addEventListener("change", syncAddress);
+    syncAddress();
   }
 
-  if (packageField) {
-    var requested = new URLSearchParams(window.location.search).get("package");
-    if (requested) {
-      var wanted = requested.toLowerCase();
-      Array.prototype.forEach.call(packageField.options, function (option) {
-        if (option.value.toLowerCase().indexOf(wanted) === 0) {
-          packageField.value = option.value;
-        }
-      });
-    }
+  var requested = new URLSearchParams(window.location.search).get("package");
+  if (requested) {
+    var wanted = requested.toLowerCase();
+    Array.prototype.forEach.call(packageRadios, function (radio) {
+      if (radio.value.toLowerCase().indexOf(wanted) === 0) {
+        radio.checked = true;
+      }
+    });
   }
 
   form.addEventListener("submit", function () {
