@@ -53,6 +53,7 @@
         <p class="eyebrow">Order</p>
         <h1>Place an order</h1>
         <p class="lede">No quote needed. Upload your plan, pick a size, and we print it.</p>
+        <p>Answer everything here, and we'll build it exactly as you describe. No back-and-forth needed.</p>
         <p>Order and upload your plan. We build the 3D model, it goes straight to the printer, and we ship by UPS with a tracking number. UPS shipping is added at cost. Brooklyn pickup is free.</p>
         <p>Prefer to talk? Call <a href="tel:+19298844123" aria-label="Call (929) 884-4123">(929) 884-4123</a> or email <a href="mailto:8kbyak@gmail.com">8kbyak@gmail.com</a>. Available 24/7.</p>
         <form class="form" data-order-form action="https://formsubmit.co/8kbyak@gmail.com" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
@@ -82,8 +83,8 @@
             </div>
           </fieldset>
           <label class="field" for="quantity">
-            <span>Quantity <span class="req">*</span></span>
-            <input id="quantity" name="Quantity" type="number" min="1" step="1" value="1" required>
+            <span>How many copies <span class="req">*</span></span>
+            <input id="quantity" name="How many copies" type="number" min="1" step="1" value="1" required>
             <p class="hint">No minimum. Order as many as you need.</p>
           </label>
           <label class="field span-2" for="plan-file">
@@ -156,9 +157,10 @@
               <input id="roof-other" name="Roof style (other)" type="text" autocomplete="off">
             </label>
             <label class="field" for="wall-color">
-              <span>Wall color</span>
-              <select id="wall-color" name="Wall color">
-                <option selected>Our choice</option>
+              <span>Wall color <span class="req">*</span></span>
+              <select id="wall-color" name="Wall color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
                 <option>White</option>
                 <option>Light gray</option>
                 <option>Beige</option>
@@ -170,9 +172,10 @@
               </select>
             </label>
             <label class="field" for="floor-color">
-              <span>Floor color</span>
-              <select id="floor-color" name="Floor color">
-                <option selected>Our choice</option>
+              <span>Floor color <span class="req">*</span></span>
+              <select id="floor-color" name="Floor color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
                 <option>White</option>
                 <option>Light gray</option>
                 <option>Beige</option>
@@ -184,9 +187,10 @@
               </select>
             </label>
             <label class="field" for="roof-color">
-              <span>Roof color</span>
-              <select id="roof-color" name="Roof color">
-                <option selected>Our choice</option>
+              <span>Roof color <span class="req">*</span></span>
+              <select id="roof-color" name="Roof color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
                 <option>White</option>
                 <option>Light gray</option>
                 <option>Beige</option>
@@ -197,10 +201,85 @@
                 <option>Green</option>
               </select>
             </label>
-            <label class="field span-2" for="name-plate">
-              <span>Name or address plate on the base?</span>
-              <input id="name-plate" name="Name or address plate" type="text" maxlength="80" autocomplete="off">
+            <label class="field" for="base-color">
+              <span>Base color <span class="req">*</span></span>
+              <select id="base-color" name="Base color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
             </label>
+            <label class="field" for="furniture-color">
+              <span>Furniture color <span class="req">*</span></span>
+              <select id="furniture-color" name="Furniture color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
+                <option>Not included</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
+            </label>
+            <label class="field" for="frame-color">
+              <span>Window and door frame color <span class="req">*</span></span>
+              <select id="frame-color" name="Window and door frame color" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
+            </label>
+            <fieldset class="field span-2">
+              <legend>Include a name or address plate? <span class="req">*</span></legend>
+              <div class="choices">
+                <label><input type="radio" name="Name or address plate" value="Yes" required> Yes</label>
+                <label><input type="radio" name="Name or address plate" value="No"> No</label>
+              </div>
+            </fieldset>
+            <label class="field span-2" id="plate-text-wrap" for="plate-text" hidden>
+              <span>Exact plate text <span class="req">*</span></span>
+              <input id="plate-text" name="Name or address plate text" type="text" maxlength="80" autocomplete="off">
+            </label>
+            <label class="field span-2" for="base-shape">
+              <span>Base shape and size <span class="req">*</span></span>
+              <select id="base-shape" name="Base shape and size" required>
+                <option value="">Select</option>
+                <option>Our choice</option>
+                <option>Rectangular</option>
+                <option>Square</option>
+                <option>Match the building outline</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="field span-2" id="base-other-wrap" for="base-other" hidden>
+              <span>Base shape and size <span class="req">*</span></span>
+              <input id="base-other" name="Base shape and size (other)" type="text" autocomplete="off">
+            </label>
+            <fieldset class="field span-2">
+              <legend>Scale preference <span class="req">*</span></legend>
+              <div class="choices">
+                <label><input type="radio" name="Scale preference" value="1:50" checked required> 1:50</label>
+                <label><input type="radio" name="Scale preference" value="Fit to package size"> Fit to package size</label>
+              </div>
+            </fieldset>
             <label class="field span-2" for="need-by">
               <span>Need it by</span>
               <input id="need-by" name="Need it by" type="date">
@@ -209,6 +288,10 @@
             <label class="field span-2" for="special">
               <span>Anything on the plan we should ignore or treat specially?</span>
               <textarea id="special" name="Ignore or treat specially" maxlength="4000"></textarea>
+            </label>
+            <label class="field span-2" for="questions">
+              <span>Questions or special requests</span>
+              <textarea id="questions" name="Questions or special requests" maxlength="4000"></textarea>
             </label>
             <label class="check span-2">
               <input id="build-confirm" type="checkbox" name="Build confirmation" value="I confirm the plan and details above are correct; the model will be built exactly from them." required>
