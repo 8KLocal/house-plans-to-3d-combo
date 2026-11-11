@@ -166,6 +166,43 @@
     syncRoof();
   }
 
+  var plateYes = form.querySelector('input[name="Name or address plate"][value="Yes"]');
+  var plateWrap = document.getElementById("plate-text-wrap");
+  var plateText = document.getElementById("plate-text");
+  var baseShape = form.querySelector("#base-shape");
+  var baseOtherWrap = document.getElementById("base-other-wrap");
+  var baseOther = document.getElementById("base-other");
+
+  function syncPlate() {
+    var show = plateYes && plateYes.checked;
+    if (plateWrap) {
+      plateWrap.hidden = !show;
+    }
+    if (plateText) {
+      plateText.required = !!show;
+    }
+  }
+
+  function syncBase() {
+    var other = baseShape && baseShape.value === "Other";
+    if (baseOtherWrap) {
+      baseOtherWrap.hidden = !other;
+    }
+    if (baseOther) {
+      baseOther.required = !!other;
+    }
+  }
+
+  Array.prototype.forEach.call(form.querySelectorAll('input[name="Name or address plate"]'), function (radio) {
+    radio.addEventListener("change", syncPlate);
+  });
+  syncPlate();
+
+  if (baseShape) {
+    baseShape.addEventListener("change", syncBase);
+    syncBase();
+  }
+
   var requested = new URLSearchParams(window.location.search).get("package");
   if (requested) {
     var wanted = requested.toLowerCase();
