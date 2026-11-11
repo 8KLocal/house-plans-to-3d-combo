@@ -129,6 +129,43 @@
     syncAddress();
   }
 
+  var floorsChoice = form.querySelector("#floors-include");
+  var floorsSpecifyWrap = document.getElementById("floors-specify-wrap");
+  var floorsSpecify = document.getElementById("floors-specify");
+  var roofStyle = form.querySelector("#roof-style");
+  var roofOtherWrap = document.getElementById("roof-other-wrap");
+  var roofOther = document.getElementById("roof-other");
+
+  function syncFloors() {
+    var specify = floorsChoice && floorsChoice.value === "Specify";
+    if (floorsSpecifyWrap) {
+      floorsSpecifyWrap.hidden = !specify;
+    }
+    if (floorsSpecify) {
+      floorsSpecify.required = !!specify;
+    }
+  }
+
+  function syncRoof() {
+    var other = roofStyle && roofStyle.value === "Other";
+    if (roofOtherWrap) {
+      roofOtherWrap.hidden = !other;
+    }
+    if (roofOther) {
+      roofOther.required = !!other;
+    }
+  }
+
+  if (floorsChoice) {
+    floorsChoice.addEventListener("change", syncFloors);
+    syncFloors();
+  }
+
+  if (roofStyle) {
+    roofStyle.addEventListener("change", syncRoof);
+    syncRoof();
+  }
+
   var requested = new URLSearchParams(window.location.search).get("package");
   if (requested) {
     var wanted = requested.toLowerCase();

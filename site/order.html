@@ -86,21 +86,135 @@
             <input id="quantity" name="Quantity" type="number" min="1" step="1" value="1" required>
             <p class="hint">No minimum. Order as many as you need.</p>
           </label>
-          <label class="field" for="floors">
-            <span>Floors</span>
-            <input id="floors" name="Floors" type="number" min="1" step="1" inputmode="numeric">
-            <p class="hint">Large models can show an interior or more than one floor.</p>
-          </label>
           <label class="field span-2" for="plan-file">
             <span>Plan file <span class="req">*</span></span>
             <input id="plan-file" name="Plan file" type="file" accept="image/*,.pdf,.stl,application/pdf,model/stl" required>
             <p class="hint">Image, PDF, or STL.</p>
           </label>
-          <label class="field span-2" for="colors">
-            <span>Color preference</span>
-            <input id="colors" name="Color preference" autocomplete="off">
-            <p class="hint">Optional.</p>
-          </label>
+          <fieldset class="build-details span-2">
+            <legend>Build details</legend>
+            <p class="hint span-2">These answers are how we build the model. The order cannot be sent until the required ones are filled in.</p>
+            <div class="field span-2">
+              <span>Overall house size in feet (length x width) <span class="req">*</span></span>
+              <div class="size-pair">
+                <label>
+                  Length (ft)
+                  <input id="house-length" name="House length (ft)" type="number" min="1" step="0.1" inputmode="decimal" required>
+                </label>
+                <label>
+                  Width (ft)
+                  <input id="house-width" name="House width (ft)" type="number" min="1" step="0.1" inputmode="decimal" required>
+                </label>
+              </div>
+              <p class="hint">As shown on your plan.</p>
+            </div>
+            <label class="field" for="floor-count">
+              <span>Number of floors <span class="req">*</span></span>
+              <input id="floor-count" name="Number of floors" type="number" min="1" step="1" inputmode="numeric" required>
+            </label>
+            <label class="field" for="floors-include">
+              <span>Which floors should we include? <span class="req">*</span></span>
+              <select id="floors-include" name="Floors to include" required>
+                <option value="">Select</option>
+                <option>All</option>
+                <option>Ground only</option>
+                <option>Specify</option>
+              </select>
+            </label>
+            <label class="field span-2" id="floors-specify-wrap" for="floors-specify" hidden>
+              <span>Which floors? <span class="req">*</span></span>
+              <input id="floors-specify" name="Floors to include (specify)" type="text" autocomplete="off">
+            </label>
+            <fieldset class="field span-2">
+              <legend>Model type <span class="req">*</span></legend>
+              <div class="choices">
+                <label><input type="radio" name="Model type" value="Exterior only" required> Exterior only</label>
+                <label><input type="radio" name="Model type" value="Interior layout (walls, rooms)"> Interior layout (walls, rooms)</label>
+                <label><input type="radio" name="Model type" value="Both with removable roof"> Both with removable roof</label>
+              </div>
+            </fieldset>
+            <fieldset class="field span-2">
+              <legend>Include furniture and fixtures shown on the plan? <span class="req">*</span></legend>
+              <div class="choices">
+                <label><input type="radio" name="Furniture and fixtures" value="Yes" required> Yes</label>
+                <label><input type="radio" name="Furniture and fixtures" value="No"> No</label>
+              </div>
+            </fieldset>
+            <label class="field span-2" for="roof-style">
+              <span>Roof style if not on the plan <span class="req">*</span></span>
+              <select id="roof-style" name="Roof style" required>
+                <option value="">Select</option>
+                <option>Flat</option>
+                <option>Gable</option>
+                <option>Hip</option>
+                <option>As shown on plan</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="field span-2" id="roof-other-wrap" for="roof-other" hidden>
+              <span>Roof style <span class="req">*</span></span>
+              <input id="roof-other" name="Roof style (other)" type="text" autocomplete="off">
+            </label>
+            <label class="field" for="wall-color">
+              <span>Wall color</span>
+              <select id="wall-color" name="Wall color">
+                <option selected>Our choice</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
+            </label>
+            <label class="field" for="floor-color">
+              <span>Floor color</span>
+              <select id="floor-color" name="Floor color">
+                <option selected>Our choice</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
+            </label>
+            <label class="field" for="roof-color">
+              <span>Roof color</span>
+              <select id="roof-color" name="Roof color">
+                <option selected>Our choice</option>
+                <option>White</option>
+                <option>Light gray</option>
+                <option>Beige</option>
+                <option>Tan</option>
+                <option>Brown</option>
+                <option>Black</option>
+                <option>Blue</option>
+                <option>Green</option>
+              </select>
+            </label>
+            <label class="field span-2" for="name-plate">
+              <span>Name or address plate on the base?</span>
+              <input id="name-plate" name="Name or address plate" type="text" maxlength="80" autocomplete="off">
+            </label>
+            <label class="field span-2" for="need-by">
+              <span>Need it by</span>
+              <input id="need-by" name="Need it by" type="date">
+              <p class="hint">Optional. Standard is 5 to 10 business days.</p>
+            </label>
+            <label class="field span-2" for="special">
+              <span>Anything on the plan we should ignore or treat specially?</span>
+              <textarea id="special" name="Ignore or treat specially" maxlength="4000"></textarea>
+            </label>
+            <label class="check span-2">
+              <input id="build-confirm" type="checkbox" name="Build confirmation" value="I confirm the plan and details above are correct; the model will be built exactly from them." required>
+              <span>I confirm the plan and details above are correct; the model will be built exactly from them. <span class="req">*</span></span>
+            </label>
+          </fieldset>
           <label class="field span-2" for="notes">
             <span>Notes</span>
             <textarea id="notes" name="Notes" maxlength="4000"></textarea>
