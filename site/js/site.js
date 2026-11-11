@@ -146,14 +146,43 @@
     }
   }
 
+  function groupVisible(id) {
+    var group = document.getElementById(id);
+    return group && !group.hidden;
+  }
+
   function syncRoof() {
-    var other = roofStyle && roofStyle.value === "Other";
+    var other = groupVisible("exterior-questions") && roofStyle && roofStyle.value === "Other";
     if (roofOtherWrap) {
       roofOtherWrap.hidden = !other;
     }
     if (roofOther) {
       roofOther.required = !!other;
     }
+  }
+
+  function applyGroup(id, show) {
+    var group = document.getElementById(id);
+    if (!group) {
+      return;
+    }
+    group.hidden = !show;
+    Array.prototype.forEach.call(group.querySelectorAll("[data-required]"), function (el) {
+      el.required = !!show;
+    });
+    if (!show) {
+      Array.prototype.forEach.call(group.querySelectorAll("input, select, textarea"), function (el) {
+        el.required = false;
+      });
+    }
+  }
+
+  function syncModel() {
+    var picked = form.querySelector('input[name="Model type"]:checked');
+    var value = picked ? picked.value : "";
+    applyGroup("exterior-questions", value === "Exterior only" || value === "Both");
+    applyGroup("interior-questions", value === "Interior only" || value === "Both");
+    syncRoof();
   }
 
   if (floorsChoice) {
@@ -163,8 +192,12 @@
 
   if (roofStyle) {
     roofStyle.addEventListener("change", syncRoof);
-    syncRoof();
   }
+
+  Array.prototype.forEach.call(form.querySelectorAll('input[name="Model type"]'), function (radio) {
+    radio.addEventListener("change", syncModel);
+  });
+  syncModel();
 
   var plateYes = form.querySelector('input[name="Name or address plate"][value="Yes"]');
   var plateWrap = document.getElementById("plate-text-wrap");
