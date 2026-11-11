@@ -37,6 +37,10 @@ jobs:
         with:
           path: site
 
+      # The deploy step can look up the artifact before GitHub has listed it.
+      - name: Let GitHub register the Pages artifact
+        run: sleep 20
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
