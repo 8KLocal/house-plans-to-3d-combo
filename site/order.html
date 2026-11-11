@@ -129,112 +129,121 @@
             <fieldset class="field span-2">
               <legend>Model type <span class="req">*</span></legend>
               <div class="choices">
-                <label><input type="radio" name="Model type" value="Exterior only" required> Exterior only</label>
-                <label><input type="radio" name="Model type" value="Interior layout (walls, rooms)"> Interior layout (walls, rooms)</label>
-                <label><input type="radio" name="Model type" value="Both with removable roof"> Both with removable roof</label>
+                <label><input type="radio" name="Model type" value="Exterior only" required> Exterior only. Outside of the house: walls and facade, windows and door openings, roof.</label>
+                <label><input type="radio" name="Model type" value="Interior only"> Interior only. Floor plan with walls, door frames and furniture, no roof.</label>
+                <label><input type="radio" name="Model type" value="Both"> Both. Exterior shell with a removable roof so the interior shows.</label>
               </div>
             </fieldset>
-            <fieldset class="field span-2">
-              <legend>Include furniture and fixtures shown on the plan? <span class="req">*</span></legend>
-              <div class="choices">
-                <label><input type="radio" name="Furniture and fixtures" value="Yes" required> Yes</label>
-                <label><input type="radio" name="Furniture and fixtures" value="No"> No</label>
-              </div>
-            </fieldset>
-            <label class="field span-2" for="roof-style">
-              <span>Roof style if not on the plan <span class="req">*</span></span>
-              <select id="roof-style" name="Roof style" required>
-                <option value="">Select</option>
-                <option>Flat</option>
-                <option>Gable</option>
-                <option>Hip</option>
-                <option>As shown on plan</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label class="field span-2" id="roof-other-wrap" for="roof-other" hidden>
-              <span>Roof style <span class="req">*</span></span>
-              <input id="roof-other" name="Roof style (other)" type="text" autocomplete="off">
-            </label>
-            <label class="field" for="wall-color">
-              <span>Wall color <span class="req">*</span></span>
-              <select id="wall-color" name="Wall color" required>
-                <option value="">Select</option>
-                <option>Our choice</option>
-                <option>White</option>
-                <option>Light gray</option>
-                <option>Beige</option>
-                <option>Tan</option>
-                <option>Brown</option>
-                <option>Black</option>
-                <option>Blue</option>
-                <option>Green</option>
-              </select>
-            </label>
-            <label class="field" for="floor-color">
-              <span>Floor color <span class="req">*</span></span>
-              <select id="floor-color" name="Floor color" required>
-                <option value="">Select</option>
-                <option>Our choice</option>
-                <option>White</option>
-                <option>Light gray</option>
-                <option>Beige</option>
-                <option>Tan</option>
-                <option>Brown</option>
-                <option>Black</option>
-                <option>Blue</option>
-                <option>Green</option>
-              </select>
-            </label>
-            <label class="field" for="roof-color">
-              <span>Roof color <span class="req">*</span></span>
-              <select id="roof-color" name="Roof color" required>
-                <option value="">Select</option>
-                <option>Our choice</option>
-                <option>White</option>
-                <option>Light gray</option>
-                <option>Beige</option>
-                <option>Tan</option>
-                <option>Brown</option>
-                <option>Black</option>
-                <option>Blue</option>
-                <option>Green</option>
-              </select>
-            </label>
+            <div class="span-2 form" id="exterior-questions" hidden>
+              <label class="field span-2" for="roof-style">
+                <span>Roof style if not on the plan <span class="req">*</span></span>
+                <select id="roof-style" name="Roof style" data-required>
+                  <option value="">Select</option>
+                  <option>Flat</option>
+                  <option>Gable</option>
+                  <option>Hip</option>
+                  <option>As shown on plan</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label class="field span-2" id="roof-other-wrap" for="roof-other" hidden>
+                <span>Roof style <span class="req">*</span></span>
+                <input id="roof-other" name="Roof style (other)" type="text" autocomplete="off">
+              </label>
+              <label class="field" for="wall-color">
+                <span>Wall color <span class="req">*</span></span>
+                <select id="wall-color" name="Wall color" data-required>
+                  <option value="">Select</option>
+                  <option>Our choice</option>
+                  <option>White</option>
+                  <option>Light gray</option>
+                  <option>Beige</option>
+                  <option>Tan</option>
+                  <option>Brown</option>
+                  <option>Black</option>
+                  <option>Blue</option>
+                  <option>Green</option>
+                </select>
+              </label>
+              <label class="field" for="roof-color">
+                <span>Roof color <span class="req">*</span></span>
+                <select id="roof-color" name="Roof color" data-required>
+                  <option value="">Select</option>
+                  <option>Our choice</option>
+                  <option>White</option>
+                  <option>Light gray</option>
+                  <option>Beige</option>
+                  <option>Tan</option>
+                  <option>Brown</option>
+                  <option>Black</option>
+                  <option>Blue</option>
+                  <option>Green</option>
+                </select>
+              </label>
+              <label class="field span-2" for="frame-color">
+                <span>Window and door frame color <span class="req">*</span></span>
+                <select id="frame-color" name="Window and door frame color" data-required>
+                  <option value="">Select</option>
+                  <option>Our choice</option>
+                  <option>White</option>
+                  <option>Light gray</option>
+                  <option>Beige</option>
+                  <option>Tan</option>
+                  <option>Brown</option>
+                  <option>Black</option>
+                  <option>Blue</option>
+                  <option>Green</option>
+                </select>
+              </label>
+              <label class="field span-2" for="exterior-files">
+                <span>Exterior photos or elevation drawings</span>
+                <input id="exterior-files" name="Exterior photos or elevations" type="file" accept="image/*,.pdf,application/pdf" multiple>
+                <p class="hint">Optional. Photos of the outside, or elevation drawings.</p>
+              </label>
+            </div>
+            <div class="span-2 form" id="interior-questions" hidden>
+              <fieldset class="field span-2">
+                <legend>Include furniture and fixtures shown on the plan? <span class="req">*</span></legend>
+                <div class="choices">
+                  <label><input type="radio" name="Furniture and fixtures" value="Yes" data-required> Yes</label>
+                  <label><input type="radio" name="Furniture and fixtures" value="No"> No</label>
+                </div>
+              </fieldset>
+              <label class="field" for="floor-color">
+                <span>Floor color <span class="req">*</span></span>
+                <select id="floor-color" name="Floor color" data-required>
+                  <option value="">Select</option>
+                  <option>Our choice</option>
+                  <option>White</option>
+                  <option>Light gray</option>
+                  <option>Beige</option>
+                  <option>Tan</option>
+                  <option>Brown</option>
+                  <option>Black</option>
+                  <option>Blue</option>
+                  <option>Green</option>
+                </select>
+              </label>
+              <label class="field" for="furniture-color">
+                <span>Furniture color <span class="req">*</span></span>
+                <select id="furniture-color" name="Furniture color" data-required>
+                  <option value="">Select</option>
+                  <option>Our choice</option>
+                  <option>Not included</option>
+                  <option>White</option>
+                  <option>Light gray</option>
+                  <option>Beige</option>
+                  <option>Tan</option>
+                  <option>Brown</option>
+                  <option>Black</option>
+                  <option>Blue</option>
+                  <option>Green</option>
+                </select>
+              </label>
+            </div>
             <label class="field" for="base-color">
               <span>Base color <span class="req">*</span></span>
               <select id="base-color" name="Base color" required>
-                <option value="">Select</option>
-                <option>Our choice</option>
-                <option>White</option>
-                <option>Light gray</option>
-                <option>Beige</option>
-                <option>Tan</option>
-                <option>Brown</option>
-                <option>Black</option>
-                <option>Blue</option>
-                <option>Green</option>
-              </select>
-            </label>
-            <label class="field" for="furniture-color">
-              <span>Furniture color <span class="req">*</span></span>
-              <select id="furniture-color" name="Furniture color" required>
-                <option value="">Select</option>
-                <option>Our choice</option>
-                <option>Not included</option>
-                <option>White</option>
-                <option>Light gray</option>
-                <option>Beige</option>
-                <option>Tan</option>
-                <option>Brown</option>
-                <option>Black</option>
-                <option>Blue</option>
-                <option>Green</option>
-              </select>
-            </label>
-            <label class="field" for="frame-color">
-              <span>Window and door frame color <span class="req">*</span></span>
-              <select id="frame-color" name="Window and door frame color" required>
                 <option value="">Select</option>
                 <option>Our choice</option>
                 <option>White</option>
@@ -364,7 +373,7 @@
       <div class="chat-head">
         <div>
           <h2 id="chat-title">Questions</h2>
-          <p class="hint">Architectural models from 8K by AK.</p>
+          <p class="hint">Exterior and interior architectural models from 8K by AK.</p>
         </div>
         <button class="chat-close" type="button" data-chat-close aria-label="Close questions">&times;</button>
       </div>
@@ -372,7 +381,7 @@
         <div>
           <button type="button" data-qa aria-expanded="false" aria-controls="qa-price" id="qa-price-btn">Pricing</button>
           <div id="qa-price" role="region" aria-labelledby="qa-price-btn" hidden>
-            <p>Small is $99, about 6 inches. Medium is $149, about 9 inches. Large is $199, about 12 inches, and can include an interior or more than one floor. Nothing is over $200. UPS shipping is added at cost.</p>
+            <p>Small is $99, about 6 inches. Medium is $149, about 9 inches. Large is $199, about 12 inches, and can include an exterior, an interior, or more than one floor. Nothing is over $200. UPS shipping is added at cost.</p>
           </div>
         </div>
         <div>
