@@ -20,6 +20,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -533,6 +537,37 @@ button.button {
 .field legend {
   font-weight: 700;
   color: var(--navy);
+}
+
+fieldset.field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.choices {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.choices label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  background: #fff;
+  border: 1px solid #cfc6bb;
+  border-radius: 10px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.choices input {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
 }
 
 .req {
